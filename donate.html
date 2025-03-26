@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Donate - Rejewvenate</title>
+  <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      line-height: 1.6;
+      background-color: #f4f4f9;
+      color: #333;
+      margin: 0;
+    }
+
+    header {
+      background: white;
+      color: white;
+      padding: 12px 0;
+      border-bottom: 2px solid #002244;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    header .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+    }
+
+    header img {
+      height: 60px;
+    }
+
+    header nav a {
+      color: #002244;
+      margin: 0 15px;
+      text-decoration: none;
+      font-size: 1rem;
+      font-weight: bold;
+      position: relative;
+      padding-bottom: 3px;
+      transition: color 0.3s ease;
+    }
+
+    header nav a:hover {
+      color: #004080;
+      text-decoration: none;
+    }
+
+    header nav a::after {
+      content: '';
+      position: absolute;
+      width: 0;
+      height: 2px;
+      bottom: 0;
+      left: 0;
+      background-color: #004080;
+      transition: width 0.3s ease;
+    }
+
+    header nav a:hover::after {
+      width: 100%;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #004080 0%, #002244 100%);
+      position: relative;
+      font-family: 'Fira Sans', sans-serif;
+      color: white;
+      text-align: center;
+      padding: 30px 10px;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: 
+        radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 20%),
+        radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 20%);
+      opacity: 0.7;
+      z-index: 1;
+    }
+
+    .hero::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+      opacity: 0.3;
+      z-index: 1;
+    }
+
+    .hero h1, .hero p {
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero h1 {
+      font-size: 2.8rem;
+      margin-bottom: 5px;
+      display: inline-block;
+      position: relative;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .hero h1 span {
+      font-family: 'Pacifico', cursive;
+      font-size: 1rem;
+      position: absolute;
+      right: -75px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .hero p {
+      font-size: 1.4rem;
+      margin-bottom: 5px;
+    }
+
+    .announcement-banner {
+      background: linear-gradient(90deg, #c42b2b, #8e1c1c);
+      color: white;
+      text-align: center;
+      padding: 10px 20px;
+      font-weight: 600;
+      font-size: 1.1rem;
+      position: relative;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    .announcement-banner a {
+      color: white;
+      text-decoration: none;
+      display: block;
+      position: relative;
+      transition: all 0.3s ease;
+    }
+
+    .announcement-banner a:hover {
+      color: #f4f4f9;
+    }
+
+    .announcement-banner a:after {
+      content: '→';
+      display: inline-block;
+      margin-left: 8px;
+      transition: transform 0.3s ease;
+    }
+
+    .announcement-banner a:hover:after {
+      transform: translateX(5px);
+    }
+
+    .donate-container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .donation-options {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      margin: 30px 0;
+    }
+
+    .donation-option {
+      width: 48%;
+      margin-bottom: 20px;
+      padding: 20px;
+      background-color: #f9f9f9;
+      border-radius: 5px;
+      border-left: 4px solid #003366;
+    }
+
+    .donation-option h3 {
+      color: #003366;
+      margin-bottom: 10px;
+    }
+
+    .donation-amount {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 15px 0;
+    }
+
+    .amount-btn {
+      padding: 8px 15px;
+      background-color: #e9e9e9;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.3s ease;
+    }
+
+    .amount-btn:hover {
+      background-color: #003366;
+      color: white;
+    }
+
+    .custom-amount {
+      display: flex;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    .custom-amount input {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-right: 10px;
+      width: 100px;
+    }
+
+    .donate-btn {
+      display: inline-block;
+      padding: 12px 28px;
+      background: linear-gradient(135deg, #004080 0%, #002244 100%);
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+      margin-top: 10px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .donate-btn:hover {
+      background: linear-gradient(135deg, #00509e 0%, #003366 100%);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      transform: translateY(-2px);
+    }
+    
+    .donate-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .why-donate {
+      margin: 20px 0 30px;
+      text-align: center;
+    }
+
+    .why-donate h2 {
+      color: #003366;
+      margin-bottom: 15px;
+    }
+
+    footer {
+      background: linear-gradient(135deg, #004080 0%, #002244 100%);
+      position: relative;
+      color: white;
+      padding: 25px 20px;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    footer::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.05' fill-rule='evenodd'/%3E%3C/svg%3E");
+      opacity: 0.3;
+      z-index: 1;
+    }
+    
+    footer .socials, footer p {
+      position: relative;
+      z-index: 2;
+    }
+
+    footer .socials {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    footer .socials a {
+      margin: 0 15px;
+      color: white;
+      font-size: 1.0rem;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+    }
+
+    footer .socials a:hover {
+      color: #f4f4f9;
+    }
+
+    footer .socials img {
+      margin-right: 8px;
+      height: 20px;
+      width: 20px;
+      position: relative;
+      top: -0px;
+    }
+
+    footer p {
+      font-size: 1rem;
+      margin-top: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .donation-option {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="container">
+      <a href="index.html">
+        <img src="icon.avif" alt="Rejewvenate Logo">
+      </a>
+      <nav>
+        <a href="index.html">Home</a>
+        <a href="about-us.html">About Us</a>
+        <a href="team.html">Team</a>
+        <a href="donate.html">Donate</a>
+        <a href="contact.html">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="announcement-banner">
+    <a href="passover.html">Click Here to Sign Up for our Passover Seder!</a>
+  </div>
+
+  <div class="hero">
+    <h1>Support Rejewvenate</h1>
+    <p>Help us create a home away from home</p>
+  </div>
+
+  <div class="donate-container">
+    <div class="why-donate">
+      <h2>Why Your Support Matters</h2>
+      <p>Your generous donations help us create a vibrant Jewish community for students. Your support enables us to:</p>
+      <ul style="text-align: left; margin: 12px 0; list-style-position: inside;">
+        <li>Host weekly Shabbat dinners for students</li>
+        <li>Organize educational and cultural events</li>
+        <li>Provide resources for Jewish learning and growth</li>
+        <li>Create a welcoming space for all Jewish students on campus</li>
+      </ul>
+    </div>
+
+    <h2 style="text-align: center; margin-bottom: 20px; color: #003366;">Choose Your Donation Option</h2>
+
+    <div class="donation-options">
+      <div class="donation-option">
+        <h3>One-Time Donation</h3>
+        <p>Support our current initiatives with a one-time gift</p>
+        <div class="donation-amount">
+          <button class="amount-btn" data-amount="1800">$18</button>
+          <button class="amount-btn" data-amount="3600">$36</button>
+          <button class="amount-btn" data-amount="7200">$72</button>
+          <button class="amount-btn" data-amount="18000">$180</button>
+        </div>
+        <div class="custom-amount">
+          <input type="number" id="one-time-custom" placeholder="Custom amount" min="1">
+          <span>USD</span>
+        </div>
+        <button class="donate-btn" id="one-time-donate-btn" data-donation-type="one-time">Donate Now</button>
+      </div>
+
+      <div class="donation-option">
+        <h3>Monthly Donation</h3>
+        <p>Become a sustaining supporter with monthly donations</p>
+        <div class="donation-amount">
+          <button class="amount-btn" data-amount="1000">$10/mo</button>
+          <button class="amount-btn" data-amount="1800">$18/mo</button>
+          <button class="amount-btn" data-amount="3600">$36/mo</button>
+          <button class="amount-btn" data-amount="5000">$50/mo</button>
+        </div>
+        <div class="custom-amount">
+          <input type="number" id="monthly-custom" placeholder="Custom amount" min="1">
+          <span>USD/month</span>
+        </div>
+        <button class="donate-btn" id="monthly-donate-btn" data-donation-type="monthly">Become a Monthly Supporter</button>
+      </div>
+
+      <div class="donation-option">
+        <h3>Sponsor an Event</h3>
+        <p>Help us host Shabbat dinners, holiday celebrations, and more</p>
+        <div class="donation-amount">
+          <button class="amount-btn" data-amount="18000">$180</button>
+          <button class="amount-btn" data-amount="36000">$360</button>
+          <button class="amount-btn" data-amount="50000">$500</button>
+          <button class="amount-btn" data-amount="100000">$1000</button>
+        </div>
+        <div class="custom-amount">
+          <input type="number" id="sponsor-custom" placeholder="Custom amount" min="1">
+          <span>USD</span>
+        </div>
+        <button class="donate-btn" id="sponsor-donate-btn" data-donation-type="sponsor">Sponsor Now</button>
+      </div>
+
+      <div class="donation-option">
+        <h3>Other Ways to Give</h3>
+        <p>Looking for other ways to support our mission?</p>
+        <ul style="margin-left: 20px; margin-top: 10px;">
+          <li>Volunteer your time</li>
+          <li>Donate supplies</li>
+          <li>Partner with us</li>
+        </ul>
+        <button class="donate-btn" style="margin-top: 20px;">Contact Us</button>
+      </div>
+    </div>
+
+    <div style="text-align: center; margin: 30px 0;">
+      <h3>For tax-deductible donations or other inquiries</h3>
+      <p>Please contact us at <a href="mailto:donate@rejewvenate.org" style="color: #003366;">donate@rejewvenate.org</a></p>
+    </div>
+  </div>
+
+  <footer>
+    <div class="socials">
+      <a href="https://www.instagram.com/rejewvenate_bychb/" target="_blank">
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Instagram_logo_2022.svg/2048px-Instagram_logo_2022.svg.png"
+          alt="Instagram Logo">
+        Instagram
+      </a>
+    </div>
+    <div style="display: flex; justify-content: center; align-items: center; margin-top: 20px; position: relative;">
+      <p style="margin: 0; flex-grow: 1; text-align: center;">&copy; 2025 by Rejewvenate.</p>
+      <a href="admin-registrations.html" style="color: white; text-decoration: none; font-size: 0.9rem; padding: 10px; position: absolute; right: 0;">Admin Login</a>
+    </div>
+  </footer>
+
+  <!-- Stripe integration script -->
+  <script>
+    // Using correct test mode publishable key
+    const stripe = Stripe('pk_test_51PT3twJb8qwjsbrobcJWgcCrc6P9oCpMwAPXBKwhuUXJEZpaKQ8IuHOTJjfT7wA8JHB3JRN4S18jqNBlnXL0mdrY00YLK64MJk');
+    
+    // Handle amount selection
+    document.querySelectorAll('.amount-btn').forEach(button => {
+      button.addEventListener('click', function() {
+        // Remove active class from all buttons in the same container
+        const buttons = this.closest('.donation-option').querySelectorAll('.amount-btn');
+        buttons.forEach(btn => btn.classList.remove('active'));
+        
+        // Add active class to this button
+        this.classList.add('active');
+        
+        // Clear the custom amount input in this donation option
+        const customInput = this.closest('.donation-option').querySelector('input[type="number"]');
+        if (customInput) {
+          customInput.value = '';
+        }
+      });
+    });
+    
+    // Handle custom amount input interaction
+    document.querySelectorAll('.custom-amount input').forEach(input => {
+      input.addEventListener('input', function() {
+        // If user types in the custom amount field, unselect any active preset buttons
+        if (this.value.trim() !== '') {
+          const buttons = this.closest('.donation-option').querySelectorAll('.amount-btn');
+          buttons.forEach(btn => btn.classList.remove('active'));
+        }
+      });
+    });
+    
+    // Handle donation button clicks
+    document.querySelectorAll('.donate-btn').forEach(button => {
+      if (button.id === 'one-time-donate-btn' || button.id === 'monthly-donate-btn' || button.id === 'sponsor-donate-btn') {
+        button.addEventListener('click', async function() {
+          const donationType = this.getAttribute('data-donation-type');
+          let amount = 0;
+          
+          // Find the selected amount button or use custom amount
+          const container = this.closest('.donation-option');
+          const selectedButton = container.querySelector('.amount-btn.active');
+          const customInput = container.querySelector('input[type="number"]');
+          
+          if (selectedButton) {
+            amount = parseInt(selectedButton.getAttribute('data-amount'));
+          } else if (customInput && customInput.value) {
+            // Convert dollars to cents for Stripe
+            amount = Math.floor(parseFloat(customInput.value) * 100);
+          } else {
+            alert('Please select or enter an amount to donate.');
+            return;
+          }
+          
+          if (amount < 100) {
+            alert('Minimum donation amount is $1.00.');
+            return;
+          }
+          
+          // Disable the button to prevent multiple clicks
+          this.disabled = true;
+          this.textContent = 'Processing...';
+          
+          try {
+            // Call our backend API to create a checkout session
+            const response = await fetch('/create-checkout-session', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                donationType,
+                amount,
+              }),
+            });
+            
+            if (!response.ok) {
+              throw new Error('Network response was not ok');
+            }
+            
+            const session = await response.json();
+            
+            // Redirect to Stripe Checkout
+            const result = await stripe.redirectToCheckout({
+              sessionId: session.id,
+            });
+            
+            if (result.error) {
+              alert(result.error.message);
+              this.disabled = false;
+              this.textContent = this.id === 'one-time-donate-btn' ? 'Donate Now' : 
+                                this.id === 'monthly-donate-btn' ? 'Become a Monthly Supporter' : 'Sponsor Now';
+            }
+          } catch (error) {
+            console.error('Error:', error);
+            alert('Something went wrong. Please try again later.');
+            this.disabled = false;
+            this.textContent = this.id === 'one-time-donate-btn' ? 'Donate Now' : 
+                              this.id === 'monthly-donate-btn' ? 'Become a Monthly Supporter' : 'Sponsor Now';
+          }
+        });
+      }
+    });
+    
+    // Add styling for active buttons
+    const style = document.createElement('style');
+    style.textContent = `
+      .amount-btn.active {
+        background-color: #003366;
+        color: white;
+      }
+    `;
+    document.head.appendChild(style);
+  </script>
+</body>
+
+</html> 
