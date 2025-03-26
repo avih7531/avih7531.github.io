@@ -1,0 +1,52 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.avif",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.js",
+      "use": "@vercel/static",
+      "config": { "excludeFiles": ["server.js"] }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/admin/registrations",
+      "dest": "server.js"
+    },
+    {
+      "src": "/registration/(.*)",
+      "dest": "server.js"
+    },
+    {
+      "src": "/send-contact-form",
+      "dest": "server.js"
+    },
+    {
+      "src": "/create-checkout-session",
+      "dest": "server.js"
+    },
+    {
+      "src": "/stripe-webhook",
+      "dest": "server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ]
+} 

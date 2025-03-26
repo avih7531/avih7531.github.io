@@ -9,6 +9,10 @@ const { open } = require('sqlite');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Detect Vercel environment
+const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NOW_REGION;
+console.log('Environment:', isVercel ? 'Vercel' : 'Local');
+
 // Middleware
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, './')));
@@ -18,9 +22,13 @@ let db;
 
 // Initialize the database
 async function initializeDatabase() {
-  // Open database connection
+  // Open database connection - use in-memory database in Vercel
+  const dbFilename = isVercel ? ':memory:' : path.join(__dirname, 'rejewvenate.db');
+  
+  console.log(`Using database: ${dbFilename}`);
+  
   db = await open({
-    filename: path.join(__dirname, 'rejewvenate.db'),
+    filename: dbFilename,
     driver: sqlite3.Database
   });
 
@@ -43,6 +51,41 @@ async function initializeDatabase() {
       donation_date TEXT
     )
   `);
+
+  // Add sample data in Vercel environment
+  if (isVercel) {
+    try {
+      // Check if we have any data
+      const count = await db.get('SELECT COUNT(*) as count FROM passover_registrations');
+      
+      if (count.count === 0) {
+        // Add sample registration for testing
+        await db.run(
+          `INSERT INTO passover_registrations (
+            registration_id, first_name, last_name, email, phone, 
+            seder_night1, seder_night2, dietary_restrictions, 
+            has_donated, donation_amount, registration_date
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            'REG-1743019494502-398',
+            'John',
+            'Doe',
+            'test@example.com',
+            '555-123-4567',
+            'on',
+            'on',
+            'No pork',
+            true,
+            54,
+            new Date().toISOString()
+          ]
+        );
+        console.log('Added sample data for testing in Vercel environment');
+      }
+    } catch (err) {
+      console.error('Error adding sample data:', err);
+    }
+  }
 
   console.log('Database initialized successfully');
 }
