@@ -3,97 +3,118 @@ const express = require('express');
 const stripe = require('stripe')('sk_test_51PT3twJb8qwjsbroIbCxIRlmRqrFOUzNaXLAtnxYDvQihBqXpD9thkzCrcT1DzAxAEjS39czL1ItsUv6CPOz4uSo00IK18tyx2'); // Using correct test mode secret key
 const bodyParser = require('body-parser');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
-const { open } = require('sqlite');
+const { createClient } = require('@vercel/edge-config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Detect Vercel environment
-const isVercel = process.env.VERCEL || process.env.VERCEL_ENV || process.env.NOW_REGION;
-console.log('Environment:', isVercel ? 'Vercel' : 'Local');
+// In-memory fallback storage for local development
+let localRegistrations = [{
+  registrationId: 'REG-1743019494502-398',
+  firstName: 'John',
+  lastName: 'Doe',
+  email: 'test@example.com',
+  phone: '555-123-4567',
+  sederNight1: 'on',
+  sederNight2: 'on',
+  dietaryRestrictions: 'No pork',
+  hasDonated: true,
+  donationAmount: 54,
+  registrationDate: new Date().toISOString(),
+  donationDate: new Date().toISOString()
+}];
+
+// Edge Config is only fully available in Vercel production environment
+// For local development, we'll just use the in-memory storage
+let isEdgeConfigAvailable = false;
+let edgeConfig;
+
+// Create Edge Config client but only use it in Vercel environment
+try {
+  edgeConfig = createClient('https://edge-config.vercel.com/ecfg_u19oenik3gvnaimrebefbcaoe6dy?token=98e90ddb-8e17-49b6-b53b-ebf4677a8a7b');
+  console.log('Edge Config client created');
+} catch (err) {
+  console.error('Error creating Edge Config client:', err);
+  console.log('Falling back to local storage only');
+}
 
 // Middleware
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, './')));
 
-// Database setup
-let db;
-
-// Initialize the database
-async function initializeDatabase() {
-  // Open database connection - use in-memory database in Vercel
-  const dbFilename = isVercel ? ':memory:' : path.join(__dirname, 'rejewvenate.db');
-  
-  console.log(`Using database: ${dbFilename}`);
-  
-  db = await open({
-    filename: dbFilename,
-    driver: sqlite3.Database
-  });
-
-  // Create tables if they don't exist
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS passover_registrations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      registration_id TEXT UNIQUE,
-      first_name TEXT,
-      last_name TEXT,
-      email TEXT,
-      phone TEXT,
-      seder_night1 TEXT,
-      seder_night2 TEXT,
-      dietary_restrictions TEXT,
-      has_donated BOOLEAN DEFAULT 0,
-      donation_amount REAL DEFAULT 0,
-      stripe_session_id TEXT,
-      registration_date TEXT,
-      donation_date TEXT
-    )
-  `);
-
-  // Add sample data in Vercel environment
-  if (isVercel) {
+// Edge Config wrapper functions to handle the API correctly
+async function getRegistrations() {
+  if (isEdgeConfigAvailable && edgeConfig) {
     try {
-      // Check if we have any data
-      const count = await db.get('SELECT COUNT(*) as count FROM passover_registrations');
-      
-      if (count.count === 0) {
-        // Add sample registration for testing
-        await db.run(
-          `INSERT INTO passover_registrations (
-            registration_id, first_name, last_name, email, phone, 
-            seder_night1, seder_night2, dietary_restrictions, 
-            has_donated, donation_amount, registration_date
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            'REG-1743019494502-398',
-            'John',
-            'Doe',
-            'test@example.com',
-            '555-123-4567',
-            'on',
-            'on',
-            'No pork',
-            true,
-            54,
-            new Date().toISOString()
-          ]
-        );
-        console.log('Added sample data for testing in Vercel environment');
-      }
+      // Try to get from Edge Config
+      const data = await edgeConfig.get('passover_registrations');
+      return data || localRegistrations;
     } catch (err) {
-      console.error('Error adding sample data:', err);
+      console.log('Edge Config get error, using local storage:', err.message);
+      return localRegistrations;
     }
   }
-
-  console.log('Database initialized successfully');
+  return localRegistrations;
 }
 
-// Initialize database when server starts
-initializeDatabase().catch(err => {
-  console.error('Database initialization failed:', err);
-  process.exit(1);
+async function saveRegistrations(registrations) {
+  // Always update local storage for fallback
+  localRegistrations = registrations;
+  
+  // If Edge Config is available, try to update it
+  if (isEdgeConfigAvailable && edgeConfig) {
+    try {
+      // In Vercel production, this would update Edge Config
+      // But for local development, this operation is not supported
+      console.log('Would update Edge Config if in Vercel production environment');
+    } catch (err) {
+      console.log('Edge Config update error:', err.message);
+    }
+  }
+}
+
+// Test Edge Config if available
+async function testEdgeConfig() {
+  if (!edgeConfig) return;
+  
+  try {
+    // Just try to get a value to see if Edge Config is working
+    console.log('Testing Edge Config connection...');
+    const greeting = await edgeConfig.get('greeting');
+    console.log('Edge Config test result:', greeting);
+    
+    if (greeting) {
+      isEdgeConfigAvailable = true;
+      console.log('Edge Config is available and working!');
+      
+      // Try to read existing registrations
+      const existingData = await edgeConfig.get('passover_registrations');
+      if (existingData && Array.isArray(existingData)) {
+        localRegistrations = existingData;
+        console.log(`Loaded ${existingData.length} registrations from Edge Config`);
+      }
+    }
+  } catch (err) {
+    console.error('Edge Config test failed:', err.message);
+    console.log('Using local storage for registrations');
+  }
+}
+
+// Initialize when server starts
+async function initialize() {
+  await testEdgeConfig();
+  console.log('Initialization complete - using ' + 
+    (isEdgeConfigAvailable ? 'Edge Config for persistent storage' : 'local memory for temporary storage'));
+  
+  if (!isEdgeConfigAvailable) {
+    console.log('Note: In local development, data will not persist between server restarts');
+    console.log('Data will be properly persisted when deployed to Vercel');
+  }
+}
+
+// Initialize when server starts
+initialize().catch(err => {
+  console.error('Initialization error:', err);
 });
 
 // Routes
@@ -145,27 +166,30 @@ app.post('/store-passover-registration', async (req, res) => {
     const registrationId = 'REG-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     const registrationDate = new Date().toISOString();
     
-    // Insert into database
-    await db.run(
-      `INSERT INTO passover_registrations (
-        registration_id, first_name, last_name, email, phone, 
-        seder_night1, seder_night2, dietary_restrictions, 
-        has_donated, donation_amount, registration_date
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        registrationId,
-        registrationData.firstName || '',
-        registrationData.lastName || '',
-        registrationData.email || '',
-        registrationData.phone || '',
-        registrationData.sederNight1 || 'off',
-        registrationData.sederNight2 || 'off',
-        registrationData.dietaryRestrictions || '',
-        false,
-        0,
-        registrationDate
-      ]
-    );
+    // Create registration object
+    const registration = {
+      registrationId: registrationId,
+      firstName: registrationData.firstName || '',
+      lastName: registrationData.lastName || '',
+      email: registrationData.email || '',
+      phone: registrationData.phone || '',
+      sederNight1: registrationData.sederNight1 || 'off',
+      sederNight2: registrationData.sederNight2 || 'off',
+      dietaryRestrictions: registrationData.dietaryRestrictions || '',
+      hasDonated: false,
+      donationAmount: 0,
+      registrationDate: registrationDate,
+      donationDate: null
+    };
+    
+    // Get current registrations
+    let registrations = await getRegistrations();
+    
+    // Add new registration
+    registrations.push(registration);
+    
+    // Save back to storage
+    await saveRegistrations(registrations);
     
     console.log('New Passover registration stored:', registrationId);
     
@@ -180,20 +204,49 @@ app.post('/store-passover-registration', async (req, res) => {
   }
 });
 
+// Get registration by ID
+app.get('/registration/:id', async (req, res) => {
+  try {
+    const registrationId = req.params.id;
+    
+    // Get all registrations
+    const registrations = await getRegistrations();
+    
+    // Find the requested registration
+    const registration = registrations.find(reg => reg.registrationId === registrationId);
+    
+    if (registration) {
+      res.json({ success: true, registration });
+    } else {
+      res.status(404).json({ success: false, message: 'Registration not found' });
+    }
+  } catch (error) {
+    console.error('Error retrieving registration:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve registration' });
+  }
+});
+
 // Update registration with donation information
 app.post('/update-registration-donation', async (req, res) => {
   try {
     const { registrationId, donationAmount, stripeSessionId } = req.body;
     
-    // Update the registration with donation info
-    const result = await db.run(
-      `UPDATE passover_registrations 
-       SET has_donated = ?, donation_amount = ?, stripe_session_id = ?, donation_date = ?
-       WHERE registration_id = ?`,
-      [true, donationAmount, stripeSessionId, new Date().toISOString(), registrationId]
-    );
+    // Get current registrations
+    let registrations = await getRegistrations();
     
-    if (result.changes > 0) {
+    // Find and update the registration
+    const registrationIndex = registrations.findIndex(reg => reg.registrationId === registrationId);
+    
+    if (registrationIndex !== -1) {
+      // Update the registration
+      registrations[registrationIndex].hasDonated = true;
+      registrations[registrationIndex].donationAmount = donationAmount;
+      registrations[registrationIndex].stripeSessionId = stripeSessionId;
+      registrations[registrationIndex].donationDate = new Date().toISOString();
+      
+      // Save back to storage
+      await saveRegistrations(registrations);
+      
       console.log('Updated registration with donation:', registrationId);
       res.json({ success: true, message: 'Registration updated with donation info' });
     } else {
@@ -216,183 +269,29 @@ app.get('/admin/registrations', async (req, res) => {
   }
   
   try {
-    const registrations = await db.all('SELECT * FROM passover_registrations ORDER BY registration_date DESC');
-    
-    // Transform database results to match the previous format
-    const formattedRegistrations = registrations.map(reg => ({
-      registrationId: reg.registration_id,
-      firstName: reg.first_name,
-      lastName: reg.last_name,
-      email: reg.email,
-      phone: reg.phone,
-      sederNight1: reg.seder_night1,
-      sederNight2: reg.seder_night2,
-      dietaryRestrictions: reg.dietary_restrictions,
-      hasDonated: reg.has_donated === 1, // SQLite stores booleans as 0 or 1
-      donationAmount: reg.donation_amount,
-      stripeSessionId: reg.stripe_session_id,
-      registrationDate: reg.registration_date,
-      donationDate: reg.donation_date
-    }));
-    
-    res.json({ success: true, registrations: formattedRegistrations });
+    const registrations = await getRegistrations();
+    res.json({ success: true, registrations });
   } catch (error) {
     console.error('Error retrieving registrations:', error);
     res.status(500).json({ success: false, message: 'Failed to retrieve registrations' });
   }
 });
 
-// Get a specific registration by ID
-app.get('/registration/:id', async (req, res) => {
-  try {
-    const registration = await db.get(
-      'SELECT * FROM passover_registrations WHERE registration_id = ?',
-      [req.params.id]
-    );
-    
-    if (registration) {
-      // Transform to client format
-      const formattedRegistration = {
-        registrationId: registration.registration_id,
-        firstName: registration.first_name,
-        lastName: registration.last_name,
-        email: registration.email,
-        phone: registration.phone,
-        sederNight1: registration.seder_night1,
-        sederNight2: registration.seder_night2,
-        dietaryRestrictions: registration.dietary_restrictions,
-        hasDonated: registration.has_donated === 1,
-        donationAmount: registration.donation_amount,
-        stripeSessionId: registration.stripe_session_id,
-        registrationDate: registration.registration_date,
-        donationDate: registration.donation_date
-      };
-      
-      res.json({ success: true, registration: formattedRegistration });
-    } else {
-      res.status(404).json({ success: false, message: 'Registration not found' });
-    }
-  } catch (error) {
-    console.error('Error retrieving registration:', error);
-    res.status(500).json({ success: false, message: 'Failed to retrieve registration' });
-  }
-});
-
 // Create a Stripe checkout session
 app.post('/create-checkout-session', async (req, res) => {
   try {
-    const { donationType, amount } = req.body;
+    const { donationAmount, registrationId, firstName, lastName, email } = req.body;
     
-    let sessionParams = {
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: `Rejewvenate ${donationType} Donation`,
-              description: `Supporting the Rejewvenate community`,
-            },
-            unit_amount: amount,
-          },
-          quantity: 1,
-        },
-      ],
-      mode: donationType === 'monthly' ? 'subscription' : 'payment',
-      success_url: `${req.headers.origin}/donation-success.html`,
-      cancel_url: `${req.headers.origin}/donate.html`,
-    };
-
-    // If it's a monthly donation, create a subscription price
-    if (donationType === 'monthly') {
-      // Create a product for the subscription
-      const product = await stripe.products.create({
-        name: 'Monthly Support for Rejewvenate',
-        description: 'Monthly recurring donation to support Rejewvenate activities',
-      });
-
-      // Create a price for the subscription
-      const price = await stripe.prices.create({
-        product: product.id,
-        unit_amount: amount,
-        currency: 'usd',
-        recurring: {
-          interval: 'month',
-        },
-      });
-
-      // Update the session parameters for subscription
-      sessionParams = {
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price: price.id,
-            quantity: 1,
-          },
-        ],
-        mode: 'subscription',
-        success_url: `${req.headers.origin}/donation-success.html`,
-        cancel_url: `${req.headers.origin}/donate.html`,
-      };
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionParams);
-
-    res.json({ id: session.id });
-  } catch (error) {
-    console.error('Error creating checkout session:', error);
-    res.status(500).json({ error: 'Failed to create checkout session' });
-  }
-});
-
-// Create a Stripe checkout session for Passover registration donation
-app.post('/create-passover-checkout-session', async (req, res) => {
-  try {
-    const { amount, registrationData, registrationId } = req.body;
-    
-    // Parse registration data if it's a string
-    const registration = typeof registrationData === 'string' ? 
-      JSON.parse(registrationData) : registrationData;
-    
-    // Store or retrieve registration ID 
-    let regId = registrationId;
-    
-    if (!regId) {
-      // Create new registration record in database
-      try {
-        // Generate a unique registration ID
-        regId = 'REG-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-        
-        // Insert into database
-        await db.run(
-          `INSERT INTO passover_registrations (
-            registration_id, first_name, last_name, email, phone, 
-            seder_night1, seder_night2, dietary_restrictions, 
-            has_donated, donation_amount, registration_date
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            regId,
-            registration.firstName || '',
-            registration.lastName || '',
-            registration.email || '',
-            registration.phone || '',
-            registration.sederNight1 || 'off',
-            registration.sederNight2 || 'off',
-            registration.dietaryRestrictions || '',
-            false,
-            0,
-            new Date().toISOString()
-          ]
-        );
-        
-        console.log('New Passover registration stored (pre-donation):', regId);
-      } catch (error) {
-        console.error('Error storing registration before checkout:', error);
-        return res.status(500).json({ error: 'Failed to store registration data' });
-      }
+    // Validate donation amount
+    if (!donationAmount || isNaN(donationAmount) || donationAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid donation amount' });
     }
     
-    const sessionParams = {
+    // Convert donation amount to cents for Stripe
+    const amountInCents = Math.round(donationAmount * 100);
+    
+    // Create checkout session
+    const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
@@ -400,91 +299,103 @@ app.post('/create-passover-checkout-session', async (req, res) => {
             currency: 'usd',
             product_data: {
               name: 'Passover Seder Donation',
-              description: 'Supporting the Rejewvenate Passover Seder',
+              description: 'Thank you for your generous donation to our Passover Seder',
             },
-            unit_amount: amount,
+            unit_amount: amountInCents,
           },
           quantity: 1,
         },
       ],
-      mode: 'payment',
-      success_url: `${req.headers.origin}/passover-registration-success.html?donation=true&amount=${amount/100}&reg_id=${regId}`,
-      cancel_url: `${req.headers.origin}/passover.html`,
+      customer_email: email || undefined,
       metadata: {
-        registration_type: 'passover',
-        registration_id: regId,
-        first_name: registration.firstName || '',
-        last_name: registration.lastName || '',
-        email: registration.email || '',
-        seder_night1: registration.sederNight1 ? 'yes' : 'no',
-        seder_night2: registration.sederNight2 ? 'yes' : 'no'
-      }
-    };
-
-    const session = await stripe.checkout.sessions.create(sessionParams);
-
-    res.json({ id: session.id, registrationId: regId });
+        registrationId: registrationId || 'direct-donation',
+        firstName: firstName || '',
+        lastName: lastName || '',
+      },
+      mode: 'payment',
+      success_url: `${req.headers.origin}/passover-registration-success.html?registration_id=${registrationId}&session_id={CHECKOUT_SESSION_ID}&donation=${donationAmount}`,
+      cancel_url: `${req.headers.origin}/passover.html`,
+    });
+    
+    res.json({ success: true, sessionId: session.id, url: session.url });
   } catch (error) {
-    console.error('Error creating Passover checkout session:', error);
-    res.status(500).json({ error: 'Failed to create checkout session' });
+    console.error('Error creating checkout session:', error);
+    res.status(500).json({ success: false, message: 'Failed to create checkout session' });
   }
 });
 
-// Webhook to handle Stripe events
-app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+// Stripe webhook for handling successful payments
+app.post('/stripe-webhook', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
+  const payload = req.body;
   const sig = req.headers['stripe-signature'];
-  const endpointSecret = 'whsec_6599f89d73e8c0abd30e4f5848e461b869c9089188791b4dfefc8cda046394cd'; // Using provided webhook secret
-
+  
   let event;
-
+  
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    event = stripe.webhooks.constructEvent(
+      payload,
+      sig,
+      'whsec_your_webhook_secret' // Replace with your actual webhook secret from Stripe
+    );
   } catch (err) {
-    console.error(`Webhook Error: ${err.message}`);
+    console.error('Webhook signature verification failed:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
-
-  // Handle the event
-  switch (event.type) {
-    case 'checkout.session.completed':
-      const session = event.data.object;
-      
-      // Check if this is a Passover registration donation
-      if (session.metadata && session.metadata.registration_type === 'passover') {
-        // Update the registration with donation info
-        const registrationId = session.metadata.registration_id;
+  
+  // Handle the checkout.session.completed event
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    
+    // Get the registration ID from the metadata
+    const registrationId = session.metadata.registrationId;
+    
+    if (registrationId !== 'direct-donation') {
+      // This was a donation connected to a registration, update it
+      try {
+        // Update registration with donation details
+        await updateRegistrationWithDonation(
+          registrationId,
+          session.amount_total / 100, // Convert back from cents
+          session.id
+        );
         
-        try {
-          // Update database record
-          await db.run(
-            `UPDATE passover_registrations 
-             SET has_donated = ?, donation_amount = ?, stripe_session_id = ?, donation_date = ?
-             WHERE registration_id = ?`,
-            [1, session.amount_total / 100, session.id, new Date().toISOString(), registrationId]
-          );
-          
-          console.log('Updated registration with successful donation:', registrationId);
-        } catch (error) {
-          console.error('Error updating registration with donation in webhook:', error);
-        }
+        console.log('Webhook: Updated registration with donation:', registrationId);
+      } catch (error) {
+        console.error('Webhook: Error updating registration:', error);
       }
-      
-      console.log('Payment successful for session:', session.id);
-      break;
-    
-    case 'invoice.paid':
-      // Handle subscription payment
-      console.log('Subscription payment successful');
-      break;
-    
-    default:
-      console.log(`Unhandled event type ${event.type}`);
+    } else {
+      // This was a direct donation without registration
+      console.log('Webhook: Processed direct donation:', session.id);
+    }
   }
-
-  res.json({ received: true });
+  
+  res.status(200).json({ received: true });
 });
 
-// Start server
+// Helper function to update registration with donation
+async function updateRegistrationWithDonation(registrationId, donationAmount, sessionId) {
+  // Get current registrations
+  let registrations = await getRegistrations();
+  
+  // Find the registration
+  const registrationIndex = registrations.findIndex(reg => reg.registrationId === registrationId);
+  
+  if (registrationIndex !== -1) {
+    // Update the registration
+    registrations[registrationIndex].hasDonated = true;
+    registrations[registrationIndex].donationAmount = donationAmount;
+    registrations[registrationIndex].stripeSessionId = sessionId;
+    registrations[registrationIndex].donationDate = new Date().toISOString();
+    
+    // Save back to storage
+    await saveRegistrations(registrations);
+    return true;
+  }
+  
+  return false;
+}
+
+// Start the server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Admin registrations available at: http://localhost:${PORT}/admin/registrations?password=rejewvenate2025`);

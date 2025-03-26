@@ -48,5 +48,8 @@
       "src": "/(.*)",
       "dest": "/$1"
     }
-  ]
+  ],
+  "env": {
+    "EDGE_CONFIG": "ecfg_u19oenik3gvnaimrebefbcaoe6dy"
+  }
 } 
