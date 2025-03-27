@@ -88,7 +88,7 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background-image: 
+      background-image:
         radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 20%),
         radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 20%);
       opacity: 0.7;
@@ -107,7 +107,8 @@
       z-index: 1;
     }
 
-    .hero h1, .hero p {
+    .hero h1,
+    .hero p {
       position: relative;
       z-index: 2;
     }
@@ -169,18 +170,18 @@
       border-radius: 10px;
       box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
     }
-    
+
     .form-group {
       margin-bottom: 20px;
     }
-    
+
     .form-group label {
       display: block;
       margin-bottom: 8px;
       font-weight: bold;
       color: #003366;
     }
-    
+
     .form-control {
       width: 100%;
       padding: 10px;
@@ -188,42 +189,42 @@
       border-radius: 5px;
       font-size: 16px;
     }
-    
+
     .checkbox-group {
       margin-bottom: 10px;
     }
-    
+
     .checkbox-group label {
       display: flex;
       align-items: center;
       font-weight: normal;
       cursor: pointer;
     }
-    
+
     .checkbox-group input[type="checkbox"] {
       margin-right: 10px;
     }
-    
+
     .amount-options {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
       margin-bottom: 20px;
     }
-    
+
     .amount-option {
       position: relative;
       flex: 1;
       min-width: 100px;
     }
-    
+
     .amount-option input[type="radio"] {
       position: absolute;
       opacity: 0;
       width: 0;
       height: 0;
     }
-    
+
     .amount-option label {
       display: block;
       padding: 15px 10px;
@@ -233,17 +234,17 @@
       cursor: pointer;
       transition: all 0.3s ease;
     }
-    
-    .amount-option input[type="radio"]:checked + label {
+
+    .amount-option input[type="radio"]:checked+label {
       background-color: #003366;
       color: white;
       border-color: #003366;
     }
-    
+
     .custom-amount {
       max-width: 200px;
     }
-    
+
     button[type="submit"] {
       background-color: #003366;
       color: white;
@@ -254,11 +255,11 @@
       cursor: pointer;
       transition: background-color 0.3s;
     }
-    
+
     button[type="submit"]:hover {
       background-color: #004080;
     }
-    
+
     button[type="submit"]:disabled {
       background-color: #999;
       cursor: not-allowed;
@@ -293,8 +294,9 @@
       opacity: 0.3;
       z-index: 1;
     }
-    
-    footer .socials, footer p {
+
+    footer .socials,
+    footer p {
       position: relative;
       z-index: 2;
     }
@@ -335,15 +337,15 @@
       .amount-options {
         flex-direction: column;
       }
-      
+
       header .container {
         flex-direction: column;
       }
-      
+
       header nav {
         margin-top: 10px;
       }
-      
+
       header nav a {
         margin: 0 8px;
       }
@@ -367,10 +369,6 @@
     </div>
   </header>
 
-  <div class="announcement-banner">
-    <a href="#">Registration is now open for our Passover Seder!</a>
-  </div>
-
   <div class="hero">
     <h1>Passover Seder Registration</h1>
     <p>Join our community for a meaningful Passover celebration</p>
@@ -379,30 +377,31 @@
   <section class="content">
     <div class="registration-form">
       <h2>Register for Passover Seder</h2>
-      <p>Please fill out the form below to register for our Passover Seder. Your information will help us prepare accordingly.</p>
-      
+      <p>Please fill out the form below to register for our Passover Seder. Your information will help us prepare
+        accordingly.</p>
+
       <form id="registrationForm">
         <!-- Personal Information -->
         <div class="form-group">
           <label for="firstName">First Name *</label>
           <input type="text" id="firstName" name="firstName" class="form-control" required>
         </div>
-        
+
         <div class="form-group">
           <label for="lastName">Last Name *</label>
           <input type="text" id="lastName" name="lastName" class="form-control" required>
         </div>
-        
+
         <div class="form-group">
           <label for="email">Email Address *</label>
           <input type="email" id="email" name="email" class="form-control" required>
         </div>
-        
+
         <div class="form-group">
           <label for="phone">Phone Number *</label>
           <input type="tel" id="phone" name="phone" class="form-control" required>
         </div>
-        
+
         <!-- Seder Nights -->
         <div class="form-group">
           <label>Please select which Seder night(s) you would like to attend:</label>
@@ -419,56 +418,27 @@
             </label>
           </div>
         </div>
-        
+
         <!-- Dietary Restrictions -->
         <div class="form-group">
           <label for="dietaryRestrictions">Dietary Restrictions or Allergies</label>
           <textarea id="dietaryRestrictions" name="dietaryRestrictions" class="form-control" rows="3"></textarea>
         </div>
-        
+
         <!-- Donation Section -->
         <div class="form-group">
           <label>Would you like to make a donation to help cover the costs?</label>
-          <p>While the Seder is free to attend, we welcome donations to help cover the costs of food and support our community.</p>
-          
-          <div class="amount-options">
-            <div class="amount-option">
-              <input type="radio" name="donationAmount" id="donation18" value="18">
-              <label for="donation18">$18</label>
-            </div>
-            
-            <div class="amount-option">
-              <input type="radio" name="donationAmount" id="donation36" value="36">
-              <label for="donation36">$36</label>
-            </div>
-            
-            <div class="amount-option">
-              <input type="radio" name="donationAmount" id="donation54" value="54">
-              <label for="donation54">$54</label>
-            </div>
-            
-            <div class="amount-option">
-              <input type="radio" name="donationAmount" id="donation72" value="72">
-              <label for="donation72">$72</label>
-            </div>
-            
-            <div class="amount-option">
-              <input type="radio" name="donationAmount" id="donation100" value="100">
-              <label for="donation100">$100</label>
-            </div>
-            
-            <div class="amount-option">
-              <input type="radio" name="donationAmount" id="donation180" value="180">
-              <label for="donation180">$180</label>
-            </div>
-          </div>
-          
-          <div class="form-group">
-            <label for="customAmount">Or enter a custom amount:</label>
-            <input type="number" id="customAmount" name="customAmount" class="form-control custom-amount" placeholder="$ Custom amount">
+          <p style="margin-bottom: 20px;">If you're able, please consider supporting our Seder, which costs around $150 per person.
+            Donations of $75-$150 are suggested, but completely optional - we just want to share this special evening
+            with you!</p>
+
+          <div class="form-group" style="display: flex; align-items: center; gap: 15px;">
+            <input type="number" id="customAmount" name="customAmount" class="form-control custom-amount"
+              placeholder="$ Amount" min="0" required>
+            <span style="font-size: 0.9rem; color: #333;">Please enter a donation amount (enter 0 if you're not donating)</span>
           </div>
         </div>
-        
+
         <button type="submit" id="submitBtn">Register</button>
         <div id="processingMessage">
           Processing your registration...
@@ -488,51 +458,60 @@
     </div>
     <div style="display: flex; justify-content: center; align-items: center; margin-top: 20px; position: relative;">
       <p style="margin: 0; flex-grow: 1; text-align: center;">&copy; 2025 by Rejewvenate.</p>
-      <a href="admin-registrations.html" style="color: white; text-decoration: none; font-size: 0.9rem; padding: 10px; position: absolute; right: 0;">Admin Login</a>
+      <a href="admin-registrations.html"
+        style="color: white; text-decoration: none; font-size: 0.9rem; padding: 10px; position: absolute; right: 0;">Admin
+        Login</a>
     </div>
   </footer>
 
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
       // Form submission handler
       const form = document.getElementById('registrationForm');
-      
-      form.addEventListener('submit', async function(event) {
+
+      form.addEventListener('submit', async function (event) {
         event.preventDefault();
-        
+
         // Validate form
         if (!validateForm()) {
           return;
         }
-        
+
         // Process registration
         await processRegistration();
       });
-      
+
       // Validation function
       function validateForm() {
         // Check if at least one Seder night is selected
         const sederNight1 = document.getElementById('sederNight1').checked;
         const sederNight2 = document.getElementById('sederNight2').checked;
-        
+
         if (!sederNight1 && !sederNight2) {
           alert('Please select at least one Seder night to attend.');
           return false;
         }
-        
+
+        // Validate donation amount
+        const donationAmount = document.getElementById('customAmount').value.trim();
+        if (donationAmount === '' || isNaN(parseFloat(donationAmount))) {
+          alert('Please enter a valid donation amount (or enter 0 if you\'re not donating).');
+          return false;
+        }
+
         return true;
       }
-      
+
       // Process registration function
       async function processRegistration() {
         try {
           // Disable submit button and show processing message
           document.getElementById('submitBtn').disabled = true;
           document.getElementById('processingMessage').style.display = 'block';
-          
+
           // Generate registration ID 
           const registrationId = 'REG-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-          
+
           // Collect form data
           const formData = {
             registrationId: registrationId,
@@ -544,7 +523,7 @@
             sederNight2: document.getElementById('sederNight2').checked ? 'on' : '',
             dietaryRestrictions: document.getElementById('dietaryRestrictions').value
           };
-          
+
           // Save registration data to server
           const registrationResponse = await fetch('/store-passover-registration', {
             method: 'POST',
@@ -553,48 +532,42 @@
             },
             body: JSON.stringify(formData)
           });
-          
+
           const registrationResult = await registrationResponse.json();
-          
+
           if (!registrationResponse.ok) {
             throw new Error(registrationResult.message || 'Failed to save registration');
           }
-          
+
           // Store in localStorage as backup
           localStorage.setItem('passoverRegistration', JSON.stringify({
             registrationId,
             ...formData
           }));
-          
+
           console.log('Registration saved successfully:', registrationResult);
-          
+
           // Check if donation was selected
-          let donationAmount;
-          if (document.getElementById('customAmount').value) {
-            donationAmount = parseFloat(document.getElementById('customAmount').value);
-          } else {
-            const selectedAmount = document.querySelector('input[name="donationAmount"]:checked');
-            donationAmount = selectedAmount ? parseFloat(selectedAmount.value) : 0;
-          }
-          
-          // If donation amount is valid, process donation
+          let donationAmount = parseFloat(document.getElementById('customAmount').value);
+
+          // If donation amount is valid and greater than 0, process donation
           if (donationAmount && !isNaN(donationAmount) && donationAmount > 0) {
             await processDonation(registrationId, donationAmount);
           } else {
-            // No donation, go directly to success page
+            // Zero donation, go directly to success page
             window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
           }
-          
+
         } catch (error) {
           console.error('Error processing registration:', error);
           alert('There was a problem with your registration: ' + error.message);
-          
+
           // Re-enable submit button and hide processing message
           document.getElementById('submitBtn').disabled = false;
           document.getElementById('processingMessage').style.display = 'none';
         }
       }
-      
+
       // Process donation function
       async function processDonation(registrationId, donationAmount) {
         try {
@@ -610,10 +583,10 @@
               donationAmount: donationAmount.toString()
             }
           };
-          
+
           // Show donation message
           alert('Your registration is complete! We will now redirect you to our secure donation page in a new tab.');
-          
+
           // Request checkout session from server
           const response = await fetch('/create-passover-checkout-session', {
             method: 'POST',
@@ -622,28 +595,28 @@
             },
             body: JSON.stringify(donationData)
           });
-          
+
           const data = await response.json();
-          
+
           if (!response.ok) {
             throw new Error(data.message || 'Failed to create donation session');
           }
-          
+
           // If we have a checkout URL
           if (data.url) {
             // Open donation page in new tab
             window.open(data.url, '_blank');
-            
+
             // Redirect main page to success
             window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
           } else {
             throw new Error('No donation URL received from server');
           }
-          
+
         } catch (error) {
           console.error('Donation error:', error);
           alert('Your registration is complete, but there was an issue processing your donation. You can still donate later if you wish.');
-          
+
           // Redirect to success page without donation
           window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
         }
@@ -651,4 +624,5 @@
     });
   </script>
 </body>
-</html> 
+
+</html>
