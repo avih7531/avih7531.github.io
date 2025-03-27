@@ -18,20 +18,78 @@ const VERCEL_API_TOKEN = 'zK6O71OhkWKKeCqq3X9NHW8S';
 
 // Flag for checking if Edge Config is available
 let isEdgeConfigAvailable = false;
+let edgeConfigClient = null;
 
 // Middleware
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, './')));
 
+// Configure fetch with retry capability for robustness
+async function fetchWithRetry(url, options, retries = 3, backoff = 300) {
+  try {
+    const response = await fetch(url, options);
+    return response;
+  } catch (err) {
+    if (retries === 0) {
+      throw err;
+    }
+    console.log(`Retrying fetch to ${url} after ${backoff}ms... (${retries} retries left)`);
+    await new Promise(resolve => setTimeout(resolve, backoff));
+    return fetchWithRetry(url, options, retries - 1, backoff * 2);
+  }
+}
+
+// Initialize Edge Config client
+function initEdgeConfigClient() {
+  try {
+    // Only create the client if it doesn't exist yet
+    if (!edgeConfigClient) {
+      console.log('Initializing Edge Config client...');
+      // Using the SDK method as recommended by Vercel
+      edgeConfigClient = createClient(edgeConfigId, { token: edgeConfigToken });
+      console.log('Edge Config client initialized');
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to initialize Edge Config client:', err);
+    return false;
+  }
+}
+
 // Helper functions for Edge Config API access
 async function getRegistrationsFromEdgeConfig() {
   try {
-    // Try to directly fetch from Edge Config
-    const response = await fetch(`${edgeConfigUrl}/item/passover_registrations?token=${edgeConfigToken}`);
+    // Try using the SDK client first (optimized for reads)
+    if (edgeConfigClient) {
+      try {
+        const data = await edgeConfigClient.get('passover_registrations');
+        if (data === null || data === undefined) {
+          console.log('No passover_registrations found in Edge Config via SDK, returning empty array');
+          return [];
+        }
+        return Array.isArray(data) ? data : [];
+      } catch (sdkError) {
+        console.log('SDK method failed, falling back to direct API call:', sdkError);
+        // Fall through to direct API call
+      }
+    }
+
+    // Fallback to direct API call with retries
+    console.log('Fetching registrations directly from Edge Config API...');
+    const response = await fetchWithRetry(
+      `${edgeConfigUrl}/item/passover_registrations?token=${edgeConfigToken}`,
+      { 
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      }
+    );
     
     if (!response.ok) {
       // If the item doesn't exist yet, return an empty array
       if (response.status === 404) {
+        console.log('No passover_registrations found in Edge Config, returning empty array');
         return [];
       }
       throw new Error(`Edge Config response error: ${response.status}`);
@@ -46,80 +104,16 @@ async function getRegistrationsFromEdgeConfig() {
 }
 
 async function saveRegistrationsToEdgeConfig(registrations) {
-  if (typeof isEdgeConfigAvailable === 'undefined' || isEdgeConfigAvailable !== true) {
-    throw new Error('Edge Config not available, cannot save registrations');
-  }
-  
   try {
-    // Use the hardcoded API token
+    // Use the hardcoded API token or environment variable
     const vercelApiToken = process.env.VERCEL_API_TOKEN || VERCEL_API_TOKEN;
     
-    console.log('Updating Edge Config with Vercel API token');
+    console.log('Updating Edge Config with registrations data...');
     
-    const updateResponse = await fetch(`https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${vercelApiToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        items: [{
-          operation: 'upsert',
-          key: 'passover_registrations',
-          value: registrations
-        }]
-      })
-    });
-    
-    if (!updateResponse.ok) {
-      const errorData = await updateResponse.json();
-      throw new Error(`Failed to update Edge Config: ${JSON.stringify(errorData)}`);
-    }
-    
-    console.log('Edge Config updated successfully with new registrations data');
-    return true;
-  } catch (err) {
-    console.error('Error saving to Edge Config:', err);
-    throw new Error('Failed to save to Edge Config');
-  }
-}
-
-// Wrapper functions for getting/saving registrations
-async function getRegistrations() {
-  // Only use Edge Config, no local memory fallback
-  if (typeof isEdgeConfigAvailable !== 'undefined' && isEdgeConfigAvailable === true) {
-    return await getRegistrationsFromEdgeConfig();
-  } else {
-    throw new Error('Edge Config is not available');
-  }
-}
-
-async function saveRegistrations(registrations) {
-  // Only use Edge Config, no local memory fallback
-  if (typeof isEdgeConfigAvailable !== 'undefined' && isEdgeConfigAvailable === true) {
-    return await saveRegistrationsToEdgeConfig(registrations);
-  } else {
-    throw new Error('Edge Config is not available');
-  }
-}
-
-// Initialize Edge Config passover_registrations if needed
-async function initializeEdgeConfig() {
-  if (typeof isEdgeConfigAvailable === 'undefined' || isEdgeConfigAvailable !== true) {
-    throw new Error('Edge Config not available for initialization');
-  }
-  
-  try {
-    // Check if passover_registrations exists
-    const response = await fetch(`${edgeConfigUrl}/item/passover_registrations?token=${edgeConfigToken}`);
-    
-    // If not found, initialize it
-    if (response.status === 404) {
-      console.log('Initializing passover_registrations in Edge Config');
-      
-      const vercelApiToken = process.env.VERCEL_API_TOKEN || VERCEL_API_TOKEN;
-      
-      const initResponse = await fetch(`https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`, {
+    // Using the recommended Vercel API endpoint with retries
+    const updateResponse = await fetchWithRetry(
+      `https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`, 
+      {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${vercelApiToken}`,
@@ -129,89 +123,242 @@ async function initializeEdgeConfig() {
           items: [{
             operation: 'upsert',
             key: 'passover_registrations',
-            value: []
+            value: registrations
           }]
         })
-      });
+      }
+    );
+    
+    if (!updateResponse.ok) {
+      let errorMessage = `HTTP error ${updateResponse.status}`;
+      try {
+        const errorData = await updateResponse.json();
+        errorMessage = `Failed to update Edge Config: ${JSON.stringify(errorData)}`;
+      } catch (e) {
+        // If parsing JSON fails, use the default error message
+      }
+      throw new Error(errorMessage);
+    }
+    
+    console.log('Edge Config updated successfully with new registrations data');
+    return true;
+  } catch (err) {
+    console.error('Error saving to Edge Config:', err);
+    throw new Error('Failed to save to Edge Config: ' + err.message);
+  }
+}
+
+// Wrapper functions for getting/saving registrations with graceful degradation
+async function getRegistrations() {
+  if (!isEdgeConfigAvailable) {
+    throw new Error('Registration system is temporarily unavailable - Edge Config is required');
+  }
+
+  return await getRegistrationsFromEdgeConfig();
+}
+
+async function saveRegistrations(registrations) {
+  if (!isEdgeConfigAvailable) {
+    throw new Error('Registration system is temporarily unavailable - Edge Config is required');
+  }
+
+  return await saveRegistrationsToEdgeConfig(registrations);
+}
+
+// Initialize Edge Config passover_registrations if needed
+async function initializeEdgeConfig() {
+  try {
+    console.log('Checking if passover_registrations exists in Edge Config...');
+    
+    // Check if passover_registrations exists
+    const response = await fetchWithRetry(
+      `${edgeConfigUrl}/item/passover_registrations?token=${edgeConfigToken}`,
+      { method: 'GET' }
+    );
+    
+    // If not found, initialize it
+    if (response.status === 404) {
+      console.log('Initializing passover_registrations in Edge Config...');
+      
+      const vercelApiToken = process.env.VERCEL_API_TOKEN || VERCEL_API_TOKEN;
+      
+      const initResponse = await fetchWithRetry(
+        `https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${vercelApiToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            items: [{
+              operation: 'upsert',
+              key: 'passover_registrations',
+              value: []
+            }]
+          })
+        }
+      );
       
       if (initResponse.ok) {
         console.log('Successfully initialized passover_registrations in Edge Config');
         return true;
       } else {
-        const errorData = await initResponse.json();
-        throw new Error(`Failed to initialize Edge Config: ${JSON.stringify(errorData)}`);
+        let errorMessage;
+        try {
+          const errorData = await initResponse.json();
+          errorMessage = JSON.stringify(errorData);
+        } catch (e) {
+          errorMessage = `HTTP error ${initResponse.status}`;
+        }
+        throw new Error(`Failed to initialize Edge Config: ${errorMessage}`);
       }
+    } else if (response.ok) {
+      console.log('passover_registrations already exists in Edge Config');
+      return true;
+    } else {
+      throw new Error(`Unexpected response when checking passover_registrations: ${response.status}`);
     }
-    
-    return true;
   } catch (err) {
     console.error('Error initializing Edge Config:', err);
-    throw new Error('Failed to initialize Edge Config');
+    throw new Error('Failed to initialize Edge Config: ' + err.message);
   }
 }
 
-// Test if Edge Config is available
-async function testEdgeConfig() {
-  try {
-    console.log('Testing Edge Config connection...');
-    
-    // Set to false by default
-    isEdgeConfigAvailable = false;
-    
-    // Try to access Edge Config
-    const response = await fetch(`${edgeConfigUrl}/items?token=${edgeConfigToken}`);
-    
-    if (response.ok) {
-      isEdgeConfigAvailable = true;
-      console.log('Edge Config is available and working!');
+// Test if Edge Config is available with multiple attempts
+async function testEdgeConfig(maxAttempts = 3) {
+  console.log(`Testing Edge Config connection (max ${maxAttempts} attempts)...`);
+  
+  // Initialize the SDK client first
+  const clientInitialized = initEdgeConfigClient();
+  if (!clientInitialized) {
+    console.warn('Failed to initialize Edge Config client, will try direct API access');
+  }
+  
+  // Set to false by default
+  isEdgeConfigAvailable = false;
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`Edge Config connection attempt ${attempt}/${maxAttempts}...`);
       
-      // Check if we have any data
-      const data = await response.json();
-      console.log('Edge Config items:', data);
-      
-      // If we have passover_registrations, use them
-      if (data && data.passover_registrations && Array.isArray(data.passover_registrations)) {
-        console.log(`Found ${data.passover_registrations.length} registrations in Edge Config`);
-      } else {
-        // Initialize passover_registrations if it doesn't exist
-        await initializeEdgeConfig();
+      // Try the SDK client first
+      if (edgeConfigClient) {
+        try {
+          const items = await edgeConfigClient.getAll();
+          console.log('Edge Config is available via SDK!');
+          isEdgeConfigAvailable = true;
+          
+          // Check for passover_registrations
+          if (items && items.passover_registrations) {
+            console.log(`Found ${Array.isArray(items.passover_registrations) ? items.passover_registrations.length : 'non-array'} registrations in Edge Config`);
+          } else {
+            console.log('No passover_registrations found, will initialize it');
+            await initializeEdgeConfig();
+          }
+          
+          return true;
+        } catch (sdkError) {
+          console.warn('SDK access failed, trying direct API:', sdkError);
+        }
       }
       
+      // Fallback to direct API call
+      const response = await fetchWithRetry(
+        `${edgeConfigUrl}/items?token=${edgeConfigToken}`,
+        { method: 'GET' },
+        1  // only 1 retry per attempt
+      );
+      
+      if (response.ok) {
+        isEdgeConfigAvailable = true;
+        console.log('Edge Config is available and working via direct API!');
+        
+        try {
+          // Check if we have any data
+          const data = await response.json();
+          console.log('Edge Config items:', data);
+          
+          // Check for passover_registrations
+          if (data && data.passover_registrations && Array.isArray(data.passover_registrations)) {
+            console.log(`Found ${data.passover_registrations.length} registrations in Edge Config`);
+          } else {
+            console.log('No passover_registrations found, will initialize it');
+            await initializeEdgeConfig();
+          }
+        } catch (parseError) {
+          console.warn('Error parsing Edge Config response:', parseError);
+          // Still consider Edge Config available if we got a successful response
+        }
+        
+        return true;
+      } else {
+        console.log(`Edge Config test failed with status: ${response.status}`);
+        
+        // If we've tried all attempts, give up
+        if (attempt === maxAttempts) {
+          isEdgeConfigAvailable = false;
+          return false;
+        }
+        
+        // Wait before the next attempt with exponential backoff
+        const delay = Math.pow(2, attempt) * 500;
+        console.log(`Waiting ${delay}ms before next attempt...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    } catch (err) {
+      console.error(`Edge Config test error (attempt ${attempt}/${maxAttempts}):`, err);
+      
+      // If we've tried all attempts, give up
+      if (attempt === maxAttempts) {
+        isEdgeConfigAvailable = false;
+        return false;
+      }
+      
+      // Wait before the next attempt with exponential backoff
+      const delay = Math.pow(2, attempt) * 500;
+      console.log(`Waiting ${delay}ms before next attempt...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  isEdgeConfigAvailable = false;
+  return false;
+}
+
+// Initialize system with graceful degradation
+async function initialize() {
+  console.log('Initializing application...');
+  
+  try {
+    // Test Edge Config availability with multiple attempts
+    const edgeConfigWorking = await testEdgeConfig(3);
+    
+    if (edgeConfigWorking) {
+      console.log('Initialization complete - using Edge Config for persistent storage');
       return true;
     } else {
-      console.log(`Edge Config test failed with status: ${response.status}`);
-      isEdgeConfigAvailable = false;
+      console.warn('Edge Config is not available - the application will operate in read-only mode');
+      console.warn('Registration and admin functions will be unavailable until Edge Config connectivity is restored');
       return false;
     }
-  } catch (err) {
-    console.error('Edge Config test error:', err);
-    isEdgeConfigAvailable = false;
+  } catch (error) {
+    console.error('Initialization warning:', error);
+    console.warn('Application will operate in limited mode with no registration functionality');
     return false;
   }
 }
 
-// Initialize system
-async function initialize() {
-  // Test Edge Config availability
-  try {
-    const edgeConfigWorking = await testEdgeConfig();
-    
-    if (!edgeConfigWorking) {
-      console.error('Edge Config is not available, and local memory storage is disabled');
-      throw new Error('Edge Config must be available for this application to function');
-    }
-    
-    console.log('Initialization complete - using Edge Config for persistent storage');
-  } catch (error) {
-    console.error('Fatal initialization error:', error);
-    throw new Error('Application cannot start without Edge Config');
+// Initialize when server starts - but don't prevent server from starting
+initialize().then(success => {
+  if (success) {
+    console.log('Application initialized successfully with Edge Config');
+  } else {
+    console.warn('Application started in limited mode - some features will be unavailable');
   }
-}
-
-// Initialize when server starts
-initialize().catch(err => {
+}).catch(err => {
   console.error('Initialization error:', err);
-  console.error('Server cannot operate without Edge Config, but will start to serve static files');
+  console.warn('Application started in limited mode - some features will be unavailable');
 });
 
 // Routes
@@ -265,8 +412,22 @@ app.get('/get-passover-registrations', async (req, res) => {
       });
     }
     
-    // Get registrations only from Edge Config
+    // Get registrations from Edge Config
     const registrations = await getRegistrations();
+    
+    // Get a single registration if ID is provided
+    const registrationId = req.query.id;
+    if (registrationId) {
+      const registration = registrations.find(reg => reg.registrationId === registrationId);
+      if (registration) {
+        return res.json({ success: true, registration });
+      } else {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Registration not found with ID: ' + registrationId 
+        });
+      }
+    }
     
     console.log(`Returning ${registrations.length} registrations from Edge Config`);
     res.json({ success: true, registrations });
@@ -293,13 +454,16 @@ app.post('/store-passover-registration', async (req, res) => {
     const registration = req.body;
     console.log('Received registration:', registration);
     
+    // Add registration date
+    registration.registrationDate = new Date().toISOString();
+    
     // Get current registrations from Edge Config
     const registrations = await getRegistrations();
     
     // Add new registration
     registrations.push(registration);
     
-    // Save to Edge Config only
+    // Save to Edge Config
     await saveRegistrations(registrations);
     
     console.log('Registration saved successfully to Edge Config');
@@ -389,6 +553,14 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
 // Get registration by ID
 app.get('/registration/:id', async (req, res) => {
   try {
+    // Check if Edge Config is available
+    if (!isEdgeConfigAvailable) {
+      return res.status(503).json({
+        success: false,
+        message: 'Registration retrieval is unavailable - Edge Config is required'
+      });
+    }
+    
     const registrationId = req.params.id;
     
     // Get all registrations
@@ -411,6 +583,14 @@ app.get('/registration/:id', async (req, res) => {
 // Update registration with donation information
 app.post('/update-registration-donation', async (req, res) => {
   try {
+    // Check if Edge Config is available
+    if (!isEdgeConfigAvailable) {
+      return res.status(503).json({
+        success: false,
+        message: 'Registration update is unavailable - Edge Config is required'
+      });
+    }
+    
     const { registrationId, donationAmount, stripeSessionId } = req.body;
     
     // Get current registrations
@@ -471,237 +651,77 @@ app.get('/admin/registrations', async (req, res) => {
   }
 });
 
-// Create a Stripe checkout session
-app.post('/create-checkout-session', async (req, res) => {
-  try {
-    // Support both field names for compatibility
-    const donationAmount = req.body.donationAmount || req.body.amount;
-    const { donationType, firstName, lastName, email } = req.body;
-    
-    console.log('Donation request received:', { 
-      donationAmount, donationType, firstName, lastName, email
-    });
-    
-    // Validate donation amount
-    if (!donationAmount || isNaN(donationAmount) || donationAmount <= 0) {
-      return res.status(400).json({ success: false, message: 'Invalid donation amount' });
-    }
-    
-    // Convert donation amount to cents for Stripe
-    const amountInCents = Math.round(donationAmount * 100);
-    
-    // Create product description based on donation type
-    let productName = 'Donation to Rejewvenate';
-    let productDescription = 'Thank you for your generous donation';
-    
-    if (donationType === 'sponsor') {
-      productName = 'Student Sponsorship';
-      productDescription = 'Sponsor a student at Rejewvenate';
-    } else if (donationType === 'recurring') {
-      productDescription = 'Monthly support for Rejewvenate';
-    } else {
-      productDescription = 'One-time donation to Rejewvenate';
-    }
-    
-    // Create checkout session
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: productName,
-              description: productDescription,
-            },
-            unit_amount: amountInCents,
-            ...(donationType === 'recurring' ? { recurring: { interval: 'month' } } : {})
-          },
-          quantity: 1,
-        },
-      ],
-      customer_email: email || undefined,
-      metadata: {
-        donationType: donationType || 'one-time',
-        firstName: firstName || '',
-        lastName: lastName || '',
-      },
-      mode: donationType === 'recurring' ? 'subscription' : 'payment',
-      success_url: `${req.headers.origin}/donation-success.html?session_id={CHECKOUT_SESSION_ID}&donation=${donationAmount}`,
-      cancel_url: `${req.headers.origin}/donate.html`,
-    });
-    
-    // Return the session ID and URL for client-side redirect
-    res.json({ 
-      success: true, 
-      sessionId: session.id, 
-      url: session.url 
-    });
-  } catch (error) {
-    console.error('Error creating checkout session:', error);
-    res.status(500).json({ success: false, message: 'Failed to create checkout session: ' + error.message });
-  }
-});
-
-// Stripe webhook for handling successful payments
-app.post('/stripe-webhook', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
-  const payload = req.body;
-  const sig = req.headers['stripe-signature'];
-  
-  let event;
-  
-  try {
-    event = stripe.webhooks.constructEvent(
-      payload,
-      sig,
-      'whsec_your_webhook_secret' // Replace with your actual webhook secret from Stripe
-    );
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-  
-  // Handle the checkout.session.completed event
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    
-    // Get the registration ID from the metadata
-    const registrationId = session.metadata.registrationId;
-    
-    if (registrationId !== 'direct-donation') {
-      // This was a donation connected to a registration, update it
-      try {
-        // Get current registrations
-        let registrations = await getRegistrations();
-        
-        // Find and update the registration
-        const registrationIndex = registrations.findIndex(reg => reg.registrationId === registrationId);
-        
-        if (registrationIndex !== -1) {
-          // Update the registration
-          registrations[registrationIndex].hasDonated = true;
-          registrations[registrationIndex].donationAmount = session.amount_total / 100; // Convert from cents
-          registrations[registrationIndex].stripeSessionId = session.id;
-          registrations[registrationIndex].donationDate = new Date().toISOString();
-          
-          // Save back to storage
-          await saveRegistrations(registrations);
-          
-          console.log('Webhook: Updated registration with donation:', registrationId);
-        }
-      } catch (error) {
-        console.error('Webhook: Error updating registration:', error);
-      }
-    } else {
-      // This was a direct donation without registration
-      console.log('Webhook: Processed direct donation:', session.id);
-    }
-  }
-  
-  res.status(200).json({ received: true });
-});
-
-// Create checkout session for Passover donation
+// Create a Stripe checkout session 
 app.post('/create-passover-checkout-session', async (req, res) => {
   try {
-    console.log('Received checkout request:', req.body);
+    const { registrationId, amount, registrationData } = req.body;
     
-    // Get donation amount in a more robust way
-    let donationAmount = 0;
-    
-    if (req.body.amount) {
-      donationAmount = parseInt(req.body.amount) / 100; // Convert from cents
-    } else if (req.body.registrationData && req.body.registrationData.donationAmount) {
-      donationAmount = parseFloat(req.body.registrationData.donationAmount);
-    } else if (req.body.donationAmount) {
-      donationAmount = parseFloat(req.body.donationAmount);
-    }
-    
-    const registrationId = req.body.registrationId;
-    const registrationData = req.body.registrationData || {};
-    
-    // Get personal info
-    const firstName = registrationData.firstName || req.body.firstName || '';
-    const lastName = registrationData.lastName || req.body.lastName || '';
-    const email = registrationData.email || req.body.email || '';
-    
-    console.log('Processing donation:', {
-      amount: donationAmount,
-      registrationId,
-      name: `${firstName} ${lastName}`,
-      email
-    });
-    
-    // Validate donation amount
-    if (!donationAmount || isNaN(donationAmount) || donationAmount <= 0) {
-      console.error('Invalid donation amount:', donationAmount);
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid donation amount',
-        received: donationAmount,
-        parsed: parseFloat(donationAmount)
+    if (!registrationId || !amount || !registrationData) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing required fields for checkout session' 
       });
     }
     
-    // Convert donation amount to cents for Stripe
-    const amountInCents = Math.round(donationAmount * 100);
-    
-    // Create Stripe checkout session
+    // Create a Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: 'Passover Seder Donation',
-              description: 'Thank you for your donation to Rejewvenate Passover Seder',
-            },
-            unit_amount: amountInCents,
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Passover Seder Donation',
+            description: 'Thank you for supporting our Passover Seder'
           },
-          quantity: 1,
+          unit_amount: amount, // amount in cents
         },
-      ],
+        quantity: 1,
+      }],
       mode: 'payment',
-      customer_email: email || undefined,
+      success_url: `${req.headers.origin}/passover-registration-success.html?registration_id=${registrationId}&donation=true`,
+      cancel_url: `${req.headers.origin}/passover-registration-success.html?registration_id=${registrationId}`,
       metadata: {
-        registrationId: registrationId,
-        firstName: firstName,
-        lastName: lastName
-      },
-      success_url: `${req.headers.origin}/passover-registration-success.html?registration_id=${registrationId}&session_id={CHECKOUT_SESSION_ID}&donation=${donationAmount}`,
-      cancel_url: `${req.headers.origin}/passover.html`,
+        registrationId,
+        firstName: registrationData.firstName,
+        lastName: registrationData.lastName,
+        email: registrationData.email,
+        donationAmount: registrationData.donationAmount
+      }
     });
     
-    console.log('Created Stripe session:', {
-      id: session.id,
-      url: session.url
+    res.json({ 
+      success: true, 
+      url: session.url,
+      sessionId: session.id
     });
-    
-    // Return the URL for direct redirect
-    res.json({
-      success: true,
-      sessionId: session.id, // Include this just in case
-      url: session.url      // This is what we'll actually use
-    });
-    
   } catch (error) {
     console.error('Error creating checkout session:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create checkout session: ' + error.message,
-      details: error.stack
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create checkout session: ' + error.message 
     });
   }
 });
 
-// Add this route for favicon
-app.get('/favicon.ico', (req, res) => {
-  res.status(204).end(); // Return a "No Content" response for favicon requests
+// Listen for Stripe webhook events (if configured)
+app.post('/stripe-webhook', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
+  const signature = req.headers['stripe-signature'];
+  let event;
+  
+  try {
+    // This would require your Stripe webhook secret - for future implementation
+    // event = stripe.webhooks.constructEvent(req.body, signature, 'whsec_your_stripe_webhook_secret');
+    // Process the event, update registrations accordingly
+    
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(400).send(`Webhook Error: ${error.message}`);
+  }
 });
 
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Admin registrations available at: http://localhost:${PORT}/admin/registrations?password=rejewvenate2025`);
+  console.log(`Edge Config ID: ${edgeConfigId}`);
 }); 

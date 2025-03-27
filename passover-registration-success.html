@@ -427,32 +427,53 @@
       return params;
     }
     
-    // Fetch registration details from the server
-    async function fetchRegistrationDetails(registrationId) {
-      try {
-        const response = await fetch(`/get-passover-registrations?id=${registrationId}`);
-        
-        if (!response.ok) {
-          // Handle Edge Config unavailability specifically
-          if (response.status === 503) {
-            console.error('Registration system is temporarily unavailable');
-            return null;
+    // Fetch registration details from the server with retry capability
+    async function fetchRegistrationDetails(registrationId, maxRetries = 2) {
+      if (!registrationId) return null;
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          console.log(`Fetching registration details, attempt ${attempt + 1}/${maxRetries}`);
+          const response = await fetch(`/get-passover-registrations?id=${registrationId}`);
+          
+          if (!response.ok) {
+            // Handle Edge Config unavailability specifically
+            if (response.status === 503) {
+              console.warn('Registration system is temporarily unavailable');
+              
+              // Only retry if we have attempts left
+              if (attempt < maxRetries - 1) {
+                const delay = Math.pow(2, attempt) * 500;
+                console.log(`Waiting ${delay}ms before retry...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue; // Try again
+              }
+              return null;
+            }
+            throw new Error('Failed to fetch registration details');
           }
-          throw new Error('Failed to fetch registration details');
+          
+          const data = await response.json();
+          
+          if (data.success && data.registration) {
+            return data.registration;
+          }
+          
+          return null;
+        } catch (error) {
+          console.error(`Error fetching registration details (attempt ${attempt + 1}):`, error);
+          
+          // Only retry if we have attempts left
+          if (attempt < maxRetries - 1) {
+            const delay = Math.pow(2, attempt) * 500;
+            console.log(`Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
         }
-        
-        const data = await response.json();
-        
-        // Find the registration with matching ID in the array
-        if (data.registrations && Array.isArray(data.registrations)) {
-          const registration = data.registrations.find(reg => reg.registrationId === registrationId);
-          return registration || null;
-        }
-        return null;
-      } catch (error) {
-        console.error('Error fetching registration details:', error);
-        return null;
       }
+      
+      console.warn('All attempts to fetch registration details failed');
+      return null;
     }
     
     // On page load, check if donation was made and display registration info
@@ -472,6 +493,14 @@
             console.log('Retrieved registration data from server:', registrationData);
           } else {
             console.log('Could not retrieve registration data from server, using URL params only');
+            // Add a message about data retrieval issues if Edge Config is unavailable
+            const detailsBox = document.querySelector('.details-box');
+            const edgeConfigWarning = document.createElement('p');
+            edgeConfigWarning.style.color = '#c42b2b';
+            edgeConfigWarning.innerHTML = 'Note: Our registration system is temporarily experiencing connectivity issues. ' +
+              'Your registration has been recorded, but some details may not be displayed. ' +
+              'Please save your registration ID for reference.';
+            detailsBox.insertBefore(edgeConfigWarning, detailsBox.firstChild);
           }
         }
       } catch (error) {
