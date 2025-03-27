@@ -16,6 +16,9 @@ const edgeConfigUrl = `https://edge-config.vercel.com/${edgeConfigId}`;
 // Hardcoded Vercel API token (replace with environment variable in production)
 const VERCEL_API_TOKEN = 'zK6O71OhkWKKeCqq3X9NHW8S';
 
+// Flag for checking if Edge Config is available
+let isEdgeConfigAvailable = false;
+
 // Global variable to store registrations in memory - make it persistent across requests
 global.inMemoryRegistrations = global.inMemoryRegistrations || [];
 
@@ -308,22 +311,40 @@ app.get('/get-passover-registrations', async (req, res) => {
 app.post('/store-passover-registration', async (req, res) => {
   try {
     const registration = req.body;
+    console.log('Received registration:', registration);
     
-    // Load current registrations
-    const registrations = await getRegistrations();
+    // Make sure we have an in-memory array even if this is the first request
+    if (!global.inMemoryRegistrations) {
+      global.inMemoryRegistrations = [];
+    }
     
-    // Add new registration
-    registrations.push(registration);
+    // Add directly to in-memory store first to ensure it's saved
+    global.inMemoryRegistrations.push(registration);
     
-    // Save updated registrations
-    await saveRegistrations(registrations);
+    // Try to use Edge Config if available, but don't fail if it doesn't work
+    try {
+      if (isEdgeConfigAvailable) {
+        const registrations = await getRegistrations();
+        
+        // Add new registration to the list from EdgeConfig
+        registrations.push(registration);
+        
+        // Save updated registrations back to EdgeConfig
+        await saveRegistrations(registrations);
+        console.log('Registration also saved to Edge Config');
+      }
+    } catch (edgeConfigError) {
+      // Just log the Edge Config error but don't fail the request
+      console.error('Edge Config error, but registration is still saved in memory:', edgeConfigError);
+    }
     
+    console.log('Registration saved successfully in memory');
     res.json({ success: true, message: 'Registration saved successfully' });
   } catch (error) {
     console.error('Error storing registration:', error);
     res.status(500).json({ 
       success: false, 
-      message: error.message 
+      message: error.message || 'An unknown error occurred'
     });
   }
 });

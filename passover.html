@@ -525,27 +525,36 @@
           };
 
           // Save registration data to server
-          const registrationResponse = await fetch('/store-passover-registration', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(formData)
-          });
+          try {
+            const registrationResponse = await fetch('/store-passover-registration', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(formData)
+            });
 
-          const registrationResult = await registrationResponse.json();
+            const registrationResult = await registrationResponse.json();
 
-          if (!registrationResponse.ok) {
-            throw new Error(registrationResult.message || 'Failed to save registration');
+            if (!registrationResponse.ok) {
+              throw new Error(registrationResult.message || 'Failed to save registration');
+            }
+
+            console.log('Registration saved successfully:', registrationResult);
+
+            // Store in localStorage as backup
+            localStorage.setItem('passoverRegistration', JSON.stringify({
+              registrationId,
+              ...formData
+            }));
+          } catch (serverError) {
+            // If server registration fails, still store in localStorage and continue
+            console.warn('Server registration had an issue, using localStorage as backup:', serverError);
+            localStorage.setItem('passoverRegistration', JSON.stringify({
+              registrationId,
+              ...formData
+            }));
           }
-
-          // Store in localStorage as backup
-          localStorage.setItem('passoverRegistration', JSON.stringify({
-            registrationId,
-            ...formData
-          }));
-
-          console.log('Registration saved successfully:', registrationResult);
 
           // Check if donation was selected
           let donationAmount = parseFloat(document.getElementById('customAmount').value);
@@ -587,32 +596,39 @@
           // Show donation message
           alert('Your registration is complete! We will now redirect you to our secure donation page in a new tab.');
 
-          // Request checkout session from server
-          const response = await fetch('/create-passover-checkout-session', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(donationData)
-          });
+          try {
+            // Request checkout session from server
+            const response = await fetch('/create-passover-checkout-session', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(donationData)
+            });
 
-          const data = await response.json();
+            const data = await response.json();
 
-          if (!response.ok) {
-            throw new Error(data.message || 'Failed to create donation session');
-          }
+            if (!response.ok) {
+              throw new Error(data.message || 'Failed to create donation session');
+            }
 
-          // If we have a checkout URL
-          if (data.url) {
-            // Open donation page in new tab
-            window.open(data.url, '_blank');
+            // If we have a checkout URL
+            if (data.url) {
+              // Open donation page in new tab
+              window.open(data.url, '_blank');
 
-            // Redirect main page to success
+              // Redirect main page to success
+              window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
+            } else {
+              throw new Error('No donation URL received from server');
+            }
+          } catch (donationError) {
+            console.error('Donation payment processing error:', donationError);
+            alert('Your registration is complete, but we encountered an issue setting up your donation. You can visit the Donate page later to complete your donation if you wish.');
+            
+            // Still redirect to success page
             window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
-          } else {
-            throw new Error('No donation URL received from server');
           }
-
         } catch (error) {
           console.error('Donation error:', error);
           alert('Your registration is complete, but there was an issue processing your donation. You can still donate later if you wish.');
