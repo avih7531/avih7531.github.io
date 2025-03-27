@@ -3,12 +3,19 @@ const express = require('express');
 const stripe = require('stripe')('sk_test_51PT3twJb8qwjsbroIbCxIRlmRqrFOUzNaXLAtnxYDvQihBqXpD9thkzCrcT1DzAxAEjS39czL1ItsUv6CPOz4uSo00IK18tyx2'); // Using correct test mode secret key
 const bodyParser = require('body-parser');
 const path = require('path');
-const { createClient } = require('@vercel/edge-config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// In-memory fallback storage for local development
+// Edge Config setup
+const edgeConfigId = 'ecfg_u19oenik3gvnaimrebefbcaoe6dy';
+const edgeConfigToken = '98e90ddb-8e17-49b6-b53b-ebf4677a8a7b';
+const edgeConfigUrl = `https://edge-config.vercel.com/${edgeConfigId}`;
+
+// Hardcoded Vercel API token (replace with environment variable in production)
+const VERCEL_API_TOKEN = 'zK6O71OhkWKKeCqq3X9NHW8S';
+
+// In-memory fallback storage
 let localRegistrations = [{
   registrationId: 'REG-1743019494502-398',
   firstName: 'John',
@@ -24,97 +31,205 @@ let localRegistrations = [{
   donationDate: new Date().toISOString()
 }];
 
-// Edge Config is only fully available in Vercel production environment
-// For local development, we'll just use the in-memory storage
+// Flag to track if Edge Config is usable
 let isEdgeConfigAvailable = false;
-let edgeConfig;
-
-// Create Edge Config client but only use it in Vercel environment
-try {
-  edgeConfig = createClient('https://edge-config.vercel.com/ecfg_u19oenik3gvnaimrebefbcaoe6dy?token=98e90ddb-8e17-49b6-b53b-ebf4677a8a7b');
-  console.log('Edge Config client created');
-} catch (err) {
-  console.error('Error creating Edge Config client:', err);
-  console.log('Falling back to local storage only');
-}
 
 // Middleware
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, './')));
 
-// Edge Config wrapper functions to handle the API correctly
+// Helper functions for Edge Config API access
+async function getRegistrationsFromEdgeConfig() {
+  try {
+    // Try to directly fetch from Edge Config
+    const response = await fetch(`${edgeConfigUrl}/item/passover_registrations?token=${edgeConfigToken}`);
+    
+    if (!response.ok) {
+      // If the item doesn't exist yet, return an empty array
+      if (response.status === 404) {
+        return [];
+      }
+      throw new Error(`Edge Config response error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.log('Edge Config fetch error, using local storage:', err.message);
+    return [];
+  }
+}
+
+async function saveRegistrationsToEdgeConfig(registrations) {
+  // Skip if we already know Edge Config isn't available
+  if (!isEdgeConfigAvailable) {
+    return false;
+  }
+  
+  try {
+    // Use the hardcoded API token
+    const vercelApiToken = process.env.VERCEL_API_TOKEN || VERCEL_API_TOKEN;
+    
+    console.log('Updating Edge Config with Vercel API token');
+    
+    const updateResponse = await fetch(`https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${vercelApiToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        items: [{
+          operation: 'upsert',
+          key: 'passover_registrations',
+          value: registrations
+        }]
+      })
+    });
+    
+    if (!updateResponse.ok) {
+      const errorData = await updateResponse.json();
+      throw new Error(`Failed to update Edge Config: ${JSON.stringify(errorData)}`);
+    }
+    
+    console.log('Edge Config updated successfully with new registrations data');
+    return true;
+  } catch (err) {
+    console.error('Error saving to Edge Config:', err);
+    return false;
+  }
+}
+
+// Wrapper functions for getting/saving registrations
 async function getRegistrations() {
-  if (isEdgeConfigAvailable && edgeConfig) {
+  if (isEdgeConfigAvailable) {
     try {
-      // Try to get from Edge Config
-      const data = await edgeConfig.get('passover_registrations');
-      return data || localRegistrations;
+      const edgeConfigData = await getRegistrationsFromEdgeConfig();
+      if (edgeConfigData && edgeConfigData.length > 0) {
+        // Update local cache
+        localRegistrations = edgeConfigData;
+        return edgeConfigData;
+      }
     } catch (err) {
-      console.log('Edge Config get error, using local storage:', err.message);
-      return localRegistrations;
+      console.error('Error getting registrations from Edge Config:', err);
     }
   }
+  
+  // Fall back to local storage
   return localRegistrations;
 }
 
 async function saveRegistrations(registrations) {
-  // Always update local storage for fallback
+  // Always update local storage
   localRegistrations = registrations;
   
-  // If Edge Config is available, try to update it
-  if (isEdgeConfigAvailable && edgeConfig) {
-    try {
-      // In Vercel production, this would update Edge Config
-      // But for local development, this operation is not supported
-      console.log('Would update Edge Config if in Vercel production environment');
-    } catch (err) {
-      console.log('Edge Config update error:', err.message);
+  if (isEdgeConfigAvailable) {
+    // Try to save to Edge Config if available
+    return await saveRegistrationsToEdgeConfig(registrations);
+  }
+  
+  return true; // Local save successful
+}
+
+// Initialize Edge Config passover_registrations if needed
+async function initializeEdgeConfig() {
+  if (!isEdgeConfigAvailable) return false;
+  
+  try {
+    // Check if passover_registrations exists
+    const response = await fetch(`${edgeConfigUrl}/item/passover_registrations?token=${edgeConfigToken}`);
+    
+    // If not found, initialize it
+    if (response.status === 404) {
+      console.log('Initializing passover_registrations in Edge Config');
+      
+      const vercelApiToken = process.env.VERCEL_API_TOKEN || VERCEL_API_TOKEN;
+      
+      const initResponse = await fetch(`https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${vercelApiToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          items: [{
+            operation: 'upsert',
+            key: 'passover_registrations',
+            value: localRegistrations
+          }]
+        })
+      });
+      
+      if (initResponse.ok) {
+        console.log('Successfully initialized passover_registrations in Edge Config');
+        return true;
+      } else {
+        const errorData = await initResponse.json();
+        throw new Error(`Failed to initialize Edge Config: ${JSON.stringify(errorData)}`);
+      }
     }
+    
+    return true;
+  } catch (err) {
+    console.error('Error initializing Edge Config:', err);
+    return false;
   }
 }
 
-// Test Edge Config if available
+// Test if Edge Config is available
 async function testEdgeConfig() {
-  if (!edgeConfig) return;
-  
   try {
-    // Just try to get a value to see if Edge Config is working
     console.log('Testing Edge Config connection...');
-    const greeting = await edgeConfig.get('greeting');
-    console.log('Edge Config test result:', greeting);
     
-    if (greeting) {
+    // Try to access Edge Config
+    const response = await fetch(`${edgeConfigUrl}/items?token=${edgeConfigToken}`);
+    
+    if (response.ok) {
       isEdgeConfigAvailable = true;
       console.log('Edge Config is available and working!');
       
-      // Try to read existing registrations
-      const existingData = await edgeConfig.get('passover_registrations');
-      if (existingData && Array.isArray(existingData)) {
-        localRegistrations = existingData;
-        console.log(`Loaded ${existingData.length} registrations from Edge Config`);
+      // Check if we have any data
+      const data = await response.json();
+      console.log('Edge Config items:', data);
+      
+      // If we have passover_registrations, use them
+      if (data && data.passover_registrations && Array.isArray(data.passover_registrations)) {
+        localRegistrations = data.passover_registrations;
+        console.log(`Loaded ${data.passover_registrations.length} registrations from Edge Config`);
+      } else {
+        // Initialize passover_registrations if it doesn't exist
+        await initializeEdgeConfig();
       }
+      
+      return true;
+    } else {
+      console.log(`Edge Config test failed with status: ${response.status}`);
+      return false;
     }
   } catch (err) {
-    console.error('Edge Config test failed:', err.message);
-    console.log('Using local storage for registrations');
+    console.error('Edge Config test error:', err);
+    return false;
   }
 }
 
-// Initialize when server starts
+// Initialize system
 async function initialize() {
-  await testEdgeConfig();
-  console.log('Initialization complete - using ' + 
-    (isEdgeConfigAvailable ? 'Edge Config for persistent storage' : 'local memory for temporary storage'));
+  // Test Edge Config availability
+  const edgeConfigWorking = await testEdgeConfig();
   
-  if (!isEdgeConfigAvailable) {
+  console.log('Initialization complete - using ' + 
+    (edgeConfigWorking ? 'Edge Config for persistent storage' : 'local memory for temporary storage'));
+  
+  if (!edgeConfigWorking) {
     console.log('Note: In local development, data will not persist between server restarts');
-    console.log('Data will be properly persisted when deployed to Vercel');
+    console.log('In Vercel production, data will be properly persisted');
   }
 }
 
 // Initialize when server starts
 initialize().catch(err => {
   console.error('Initialization error:', err);
+  // Continue with local storage
 });
 
 // Routes
@@ -280,7 +395,13 @@ app.get('/admin/registrations', async (req, res) => {
 // Create a Stripe checkout session
 app.post('/create-checkout-session', async (req, res) => {
   try {
-    const { donationAmount, registrationId, firstName, lastName, email } = req.body;
+    // Support both field names for compatibility
+    const donationAmount = req.body.donationAmount || req.body.amount;
+    const { donationType, firstName, lastName, email } = req.body;
+    
+    console.log('Donation request received:', { 
+      donationAmount, donationType, firstName, lastName, email
+    });
     
     // Validate donation amount
     if (!donationAmount || isNaN(donationAmount) || donationAmount <= 0) {
@@ -290,6 +411,19 @@ app.post('/create-checkout-session', async (req, res) => {
     // Convert donation amount to cents for Stripe
     const amountInCents = Math.round(donationAmount * 100);
     
+    // Create product description based on donation type
+    let productName = 'Donation to Rejewvenate';
+    let productDescription = 'Thank you for your generous donation';
+    
+    if (donationType === 'sponsor') {
+      productName = 'Student Sponsorship';
+      productDescription = 'Sponsor a student at Rejewvenate';
+    } else if (donationType === 'recurring') {
+      productDescription = 'Monthly support for Rejewvenate';
+    } else {
+      productDescription = 'One-time donation to Rejewvenate';
+    }
+    
     // Create checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -298,29 +432,35 @@ app.post('/create-checkout-session', async (req, res) => {
           price_data: {
             currency: 'usd',
             product_data: {
-              name: 'Passover Seder Donation',
-              description: 'Thank you for your generous donation to our Passover Seder',
+              name: productName,
+              description: productDescription,
             },
             unit_amount: amountInCents,
+            ...(donationType === 'recurring' ? { recurring: { interval: 'month' } } : {})
           },
           quantity: 1,
         },
       ],
       customer_email: email || undefined,
       metadata: {
-        registrationId: registrationId || 'direct-donation',
+        donationType: donationType || 'one-time',
         firstName: firstName || '',
         lastName: lastName || '',
       },
-      mode: 'payment',
-      success_url: `${req.headers.origin}/passover-registration-success.html?registration_id=${registrationId}&session_id={CHECKOUT_SESSION_ID}&donation=${donationAmount}`,
-      cancel_url: `${req.headers.origin}/passover.html`,
+      mode: donationType === 'recurring' ? 'subscription' : 'payment',
+      success_url: `${req.headers.origin}/donation-success.html?session_id={CHECKOUT_SESSION_ID}&donation=${donationAmount}`,
+      cancel_url: `${req.headers.origin}/donate.html`,
     });
     
-    res.json({ success: true, sessionId: session.id, url: session.url });
+    // Return the session ID and URL for client-side redirect
+    res.json({ 
+      success: true, 
+      sessionId: session.id, 
+      url: session.url 
+    });
   } catch (error) {
     console.error('Error creating checkout session:', error);
-    res.status(500).json({ success: false, message: 'Failed to create checkout session' });
+    res.status(500).json({ success: false, message: 'Failed to create checkout session: ' + error.message });
   }
 });
 
@@ -352,14 +492,24 @@ app.post('/stripe-webhook', bodyParser.raw({ type: 'application/json' }), async 
     if (registrationId !== 'direct-donation') {
       // This was a donation connected to a registration, update it
       try {
-        // Update registration with donation details
-        await updateRegistrationWithDonation(
-          registrationId,
-          session.amount_total / 100, // Convert back from cents
-          session.id
-        );
+        // Get current registrations
+        let registrations = await getRegistrations();
         
-        console.log('Webhook: Updated registration with donation:', registrationId);
+        // Find and update the registration
+        const registrationIndex = registrations.findIndex(reg => reg.registrationId === registrationId);
+        
+        if (registrationIndex !== -1) {
+          // Update the registration
+          registrations[registrationIndex].hasDonated = true;
+          registrations[registrationIndex].donationAmount = session.amount_total / 100; // Convert from cents
+          registrations[registrationIndex].stripeSessionId = session.id;
+          registrations[registrationIndex].donationDate = new Date().toISOString();
+          
+          // Save back to storage
+          await saveRegistrations(registrations);
+          
+          console.log('Webhook: Updated registration with donation:', registrationId);
+        }
       } catch (error) {
         console.error('Webhook: Error updating registration:', error);
       }
@@ -372,28 +522,104 @@ app.post('/stripe-webhook', bodyParser.raw({ type: 'application/json' }), async 
   res.status(200).json({ received: true });
 });
 
-// Helper function to update registration with donation
-async function updateRegistrationWithDonation(registrationId, donationAmount, sessionId) {
-  // Get current registrations
-  let registrations = await getRegistrations();
-  
-  // Find the registration
-  const registrationIndex = registrations.findIndex(reg => reg.registrationId === registrationId);
-  
-  if (registrationIndex !== -1) {
-    // Update the registration
-    registrations[registrationIndex].hasDonated = true;
-    registrations[registrationIndex].donationAmount = donationAmount;
-    registrations[registrationIndex].stripeSessionId = sessionId;
-    registrations[registrationIndex].donationDate = new Date().toISOString();
+// Create checkout session for Passover donation
+app.post('/create-passover-checkout-session', async (req, res) => {
+  try {
+    console.log('Received checkout request:', req.body);
     
-    // Save back to storage
-    await saveRegistrations(registrations);
-    return true;
+    // Get donation amount in a more robust way
+    let donationAmount = 0;
+    
+    if (req.body.amount) {
+      donationAmount = parseInt(req.body.amount) / 100; // Convert from cents
+    } else if (req.body.registrationData && req.body.registrationData.donationAmount) {
+      donationAmount = parseFloat(req.body.registrationData.donationAmount);
+    } else if (req.body.donationAmount) {
+      donationAmount = parseFloat(req.body.donationAmount);
+    }
+    
+    const registrationId = req.body.registrationId;
+    const registrationData = req.body.registrationData || {};
+    
+    // Get personal info
+    const firstName = registrationData.firstName || req.body.firstName || '';
+    const lastName = registrationData.lastName || req.body.lastName || '';
+    const email = registrationData.email || req.body.email || '';
+    
+    console.log('Processing donation:', {
+      amount: donationAmount,
+      registrationId,
+      name: `${firstName} ${lastName}`,
+      email
+    });
+    
+    // Validate donation amount
+    if (!donationAmount || isNaN(donationAmount) || donationAmount <= 0) {
+      console.error('Invalid donation amount:', donationAmount);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid donation amount',
+        received: donationAmount,
+        parsed: parseFloat(donationAmount)
+      });
+    }
+    
+    // Convert donation amount to cents for Stripe
+    const amountInCents = Math.round(donationAmount * 100);
+    
+    // Create Stripe checkout session
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Passover Seder Donation',
+              description: 'Thank you for your donation to Rejewvenate Passover Seder',
+            },
+            unit_amount: amountInCents,
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      customer_email: email || undefined,
+      metadata: {
+        registrationId: registrationId,
+        firstName: firstName,
+        lastName: lastName
+      },
+      success_url: `${req.headers.origin}/passover-registration-success.html?registration_id=${registrationId}&session_id={CHECKOUT_SESSION_ID}&donation=${donationAmount}`,
+      cancel_url: `${req.headers.origin}/passover.html`,
+    });
+    
+    console.log('Created Stripe session:', {
+      id: session.id,
+      url: session.url
+    });
+    
+    // Return the URL for direct redirect
+    res.json({
+      success: true,
+      sessionId: session.id, // Include this just in case
+      url: session.url      // This is what we'll actually use
+    });
+    
+  } catch (error) {
+    console.error('Error creating checkout session:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create checkout session: ' + error.message,
+      details: error.stack
+    });
   }
-  
-  return false;
-}
+});
+
+// Add this route for favicon
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end(); // Return a "No Content" response for favicon requests
+});
 
 // Start the server
 app.listen(PORT, () => {
