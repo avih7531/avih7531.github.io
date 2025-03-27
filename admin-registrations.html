@@ -288,10 +288,19 @@
     // Load registrations from the server
     async function loadRegistrations() {
       try {
+        document.getElementById('refreshBtn').disabled = true;
+        document.getElementById('refreshBtn').textContent = 'Loading...';
+        
         const response = await fetch(`/admin/registrations?password=${ADMIN_PASSWORD}`);
         
         if (!response.ok) {
-          throw new Error('Failed to load registrations');
+          // Handle Edge Config unavailability specifically
+          if (response.status === 503) {
+            throw new Error('Registration system is temporarily unavailable. Edge Config storage cannot be accessed.');
+          }
+          
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to load registrations');
         }
         
         const data = await response.json();
@@ -305,7 +314,22 @@
         }
       } catch (error) {
         console.error('Error loading registrations:', error);
-        alert('Failed to load registrations. Please try again.');
+        alert('Failed to load registrations: ' + error.message);
+        
+        // Show a message in the table
+        const tableBody = document.getElementById('registrationsTableBody');
+        tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: #c0392b;">
+          Error: ${error.message}
+        </td></tr>`;
+        
+        // Clear the stats
+        document.getElementById('totalRegistrations').textContent = '-';
+        document.getElementById('firstNightCount').textContent = '-';
+        document.getElementById('secondNightCount').textContent = '-';
+        document.getElementById('totalDonations').textContent = '-';
+      } finally {
+        document.getElementById('refreshBtn').disabled = false;
+        document.getElementById('refreshBtn').textContent = 'Refresh Data';
       }
     }
     
@@ -478,12 +502,21 @@
       }
       
       try {
+        // Disable the button
+        event.target.disabled = true;
+        event.target.textContent = 'Deleting...';
+        
         // Send delete request to server
         const response = await fetch(`/delete-passover-registration/${registrationId}`, {
           method: 'DELETE'
         });
         
         if (!response.ok) {
+          // Handle Edge Config unavailability specifically
+          if (response.status === 503) {
+            throw new Error('Registration system is temporarily unavailable. Edge Config storage cannot be accessed.');
+          }
+          
           const error = await response.json();
           throw new Error(error.message || 'Failed to delete registration');
         }
@@ -503,6 +536,10 @@
       } catch (error) {
         console.error('Error deleting registration:', error);
         alert('Error: ' + error.message);
+        
+        // Re-enable the button
+        event.target.disabled = false;
+        event.target.textContent = 'Remove';
       }
     }
   </script>

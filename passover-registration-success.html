@@ -430,14 +430,25 @@
     // Fetch registration details from the server
     async function fetchRegistrationDetails(registrationId) {
       try {
-        const response = await fetch(`/registration/${registrationId}`);
+        const response = await fetch(`/get-passover-registrations?id=${registrationId}`);
         
         if (!response.ok) {
+          // Handle Edge Config unavailability specifically
+          if (response.status === 503) {
+            console.error('Registration system is temporarily unavailable');
+            return null;
+          }
           throw new Error('Failed to fetch registration details');
         }
         
         const data = await response.json();
-        return data.success ? data.registration : null;
+        
+        // Find the registration with matching ID in the array
+        if (data.registrations && Array.isArray(data.registrations)) {
+          const registration = data.registrations.find(reg => reg.registrationId === registrationId);
+          return registration || null;
+        }
+        return null;
       } catch (error) {
         console.error('Error fetching registration details:', error);
         return null;
@@ -447,24 +458,20 @@
     // On page load, check if donation was made and display registration info
     document.addEventListener('DOMContentLoaded', async function() {
       const urlParams = getUrlParams();
-      const registrationId = urlParams.reg_id;
+      const registrationId = urlParams.registration_id;
       
-      // Get registration data from localStorage or server
+      // Get registration data from server
       let registrationData = {};
       try {
-        // First try to get from localStorage (for fastest experience)
-        const storedData = localStorage.getItem('sederRegistration');
-        if (storedData) {
-          registrationData = JSON.parse(storedData);
-          console.log('Retrieved registration data from localStorage:', registrationData);
-        } 
-        // If registration ID is provided but no localStorage data, fetch from server
-        else if (registrationId) {
+        // If registration ID is provided, fetch from server
+        if (registrationId) {
           console.log('Fetching registration data from server...');
           const serverData = await fetchRegistrationDetails(registrationId);
           if (serverData) {
             registrationData = serverData;
             console.log('Retrieved registration data from server:', registrationData);
+          } else {
+            console.log('Could not retrieve registration data from server, using URL params only');
           }
         }
       } catch (error) {
@@ -472,15 +479,13 @@
       }
       
       // If we have a registration ID, show a confirmation message
-      if (registrationId || (registrationData && registrationData.registrationId)) {
-        const regId = registrationId || registrationData.registrationId;
-        
+      if (registrationId) {
         // Add registration confirmation details if we have them
         const detailsBox = document.querySelector('.details-box');
         const regConfirmationElement = document.createElement('div');
         regConfirmationElement.innerHTML = `
           <p style="margin-top: 15px;">
-            <strong>Registration ID:</strong> ${regId}
+            <strong>Registration ID:</strong> ${registrationId}
           </p>
           <p style="color: #003366; font-size: 0.9em;">
             Your registration has been recorded in our system. 
@@ -532,16 +537,6 @@
         
         // Change the page title to reflect donation
         document.title = 'Registration & Donation Successful - Rejewvenate';
-      }
-      
-      // Clean up localStorage after successful registration
-      // This helps avoid showing stale data if user returns to success page
-      if (localStorage.getItem('sederRegistration')) {
-        // Wait a bit before clearing to ensure all data is used
-        setTimeout(() => {
-          localStorage.removeItem('sederRegistration');
-          console.log('Registration data cleared from localStorage');
-        }, 2000);
       }
     });
   </script>
