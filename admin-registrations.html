@@ -167,6 +167,20 @@
     .hidden {
       display: none;
     }
+    
+    .delete-btn {
+      background-color: #e74c3c;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    .delete-btn:hover {
+      background-color: #c0392b;
+    }
   </style>
 </head>
 
@@ -230,6 +244,7 @@
           <th>Donated</th>
           <th>Amount</th>
           <th>Date Registered</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody id="registrationsTableBody">
@@ -349,9 +364,19 @@
           <td class="${reg.hasDonated ? 'donation-yes' : 'donation-no'}">${reg.hasDonated ? 'Yes' : 'No'}</td>
           <td>${reg.hasDonated ? '$' + (parseFloat(reg.donationAmount) || 0).toFixed(2) : '-'}</td>
           <td>${formattedDate}</td>
+          <td>
+            <button class="delete-btn" data-id="${reg.registrationId || reg.registration_id}">
+              Remove
+            </button>
+          </td>
         `;
         
         tableBody.appendChild(row);
+      });
+      
+      // Add event listeners to all delete buttons
+      document.querySelectorAll('.delete-btn').forEach(button => {
+        button.addEventListener('click', handleDeleteRegistration);
       });
     }
     
@@ -436,6 +461,49 @@
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+    }
+    
+    // Delete handling function
+    async function handleDeleteRegistration(event) {
+      const registrationId = event.target.getAttribute('data-id');
+      
+      if (!registrationId) {
+        alert('Could not identify registration to delete');
+        return;
+      }
+      
+      // Ask for confirmation
+      if (!confirm('Are you sure you want to remove this registration? This action cannot be undone.')) {
+        return;
+      }
+      
+      try {
+        // Send delete request to server
+        const response = await fetch(`/delete-passover-registration/${registrationId}`, {
+          method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to delete registration');
+        }
+        
+        // If successful, remove the row from the table
+        const row = event.target.closest('tr');
+        if (row) {
+          row.remove();
+        }
+        
+        // Show success message
+        alert('Registration successfully removed');
+        
+        // Optionally, refresh the table to show updated data
+        loadRegistrations();
+        
+      } catch (error) {
+        console.error('Error deleting registration:', error);
+        alert('Error: ' + error.message);
+      }
     }
   </script>
 </body>

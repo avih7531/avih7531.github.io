@@ -3,6 +3,7 @@ const express = require('express');
 const stripe = require('stripe')('sk_test_51PT3twJb8qwjsbroIbCxIRlmRqrFOUzNaXLAtnxYDvQihBqXpD9thkzCrcT1DzAxAEjS39czL1ItsUv6CPOz4uSo00IK18tyx2'); // Using correct test mode secret key
 const bodyParser = require('body-parser');
 const path = require('path');
+const { createClient } = require('@vercel/edge-config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,24 +16,8 @@ const edgeConfigUrl = `https://edge-config.vercel.com/${edgeConfigId}`;
 // Hardcoded Vercel API token (replace with environment variable in production)
 const VERCEL_API_TOKEN = 'zK6O71OhkWKKeCqq3X9NHW8S';
 
-// In-memory fallback storage
-let localRegistrations = [{
-  registrationId: 'REG-1743019494502-398',
-  firstName: 'John',
-  lastName: 'Doe',
-  email: 'test@example.com',
-  phone: '555-123-4567',
-  sederNight1: 'on',
-  sederNight2: 'on',
-  dietaryRestrictions: 'No pork',
-  hasDonated: true,
-  donationAmount: 54,
-  registrationDate: new Date().toISOString(),
-  donationDate: new Date().toISOString()
-}];
-
-// Flag to track if Edge Config is usable
-let isEdgeConfigAvailable = false;
+// Global variable to store registrations in memory - make it persistent across requests
+global.inMemoryRegistrations = global.inMemoryRegistrations || [];
 
 // Middleware
 app.use(bodyParser.json());
@@ -107,7 +92,7 @@ async function getRegistrations() {
       const edgeConfigData = await getRegistrationsFromEdgeConfig();
       if (edgeConfigData && edgeConfigData.length > 0) {
         // Update local cache
-        localRegistrations = edgeConfigData;
+        global.inMemoryRegistrations = edgeConfigData;
         return edgeConfigData;
       }
     } catch (err) {
@@ -116,19 +101,21 @@ async function getRegistrations() {
   }
   
   // Fall back to local storage
-  return localRegistrations;
+  return global.inMemoryRegistrations;
 }
 
 async function saveRegistrations(registrations) {
-  // Always update local storage
-  localRegistrations = registrations;
+  // Update in-memory store
+  global.inMemoryRegistrations = registrations;
   
-  if (isEdgeConfigAvailable) {
-    // Try to save to Edge Config if available
-    return await saveRegistrationsToEdgeConfig(registrations);
+  // Try to save to Edge Config if available
+  try {
+    if (typeof edgeConfig !== 'undefined' && edgeConfig.set) {
+      await edgeConfig.set('passover_registrations', registrations);
+    }
+  } catch (error) {
+    console.error('Error saving to Edge Config, changes only in memory:', error);
   }
-  
-  return true; // Local save successful
 }
 
 // Initialize Edge Config passover_registrations if needed
@@ -155,7 +142,7 @@ async function initializeEdgeConfig() {
           items: [{
             operation: 'upsert',
             key: 'passover_registrations',
-            value: localRegistrations
+            value: global.inMemoryRegistrations
           }]
         })
       });
@@ -194,7 +181,7 @@ async function testEdgeConfig() {
       
       // If we have passover_registrations, use them
       if (data && data.passover_registrations && Array.isArray(data.passover_registrations)) {
-        localRegistrations = data.passover_registrations;
+        global.inMemoryRegistrations = data.passover_registrations;
         console.log(`Loaded ${data.passover_registrations.length} registrations from Edge Config`);
       } else {
         // Initialize passover_registrations if it doesn't exist
@@ -272,50 +259,193 @@ app.post('/send-contact-form', (req, res) => {
   }
 });
 
-// Store Passover registration
+// Get all registrations endpoint
+app.get('/get-passover-registrations', async (req, res) => {
+  try {
+    let registrations = [];
+    
+    // Try Edge Config first
+    try {
+      const { createClient } = require('@vercel/edge-config');
+      
+      try {
+        const edgeConfigClient = createClient(process.env.EDGE_CONFIG);
+        registrations = await edgeConfigClient.get('passover_registrations') || [];
+        console.log(`Loaded ${registrations.length} registrations from Edge Config`);
+      } catch (error) {
+        try {
+          const edgeConfigClient = createClient({ token: process.env.EDGE_CONFIG_TOKEN });
+          registrations = await edgeConfigClient.get('passover_registrations') || [];
+          console.log(`Loaded ${registrations.length} registrations from Edge Config using token object`);
+        } catch (error2) {
+          console.log('Both Edge Config approaches failed, using global memory store');
+          registrations = global.inMemoryRegistrations || [];
+        }
+      }
+    } catch (error) {
+      console.log('Error accessing Edge Config, using global memory store');
+      registrations = global.inMemoryRegistrations || [];
+    }
+    
+    // Ensure we have registrations from somewhere
+    if (!registrations || registrations.length === 0) {
+      registrations = global.inMemoryRegistrations || [];
+      console.log(`Using in-memory store with ${registrations.length} registrations`);
+    }
+    
+    console.log(`Returning ${registrations.length} registrations`);
+    res.json({ success: true, registrations });
+  } catch (error) {
+    console.error('Error getting registrations:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+});
+
+// Store registration endpoint
 app.post('/store-passover-registration', async (req, res) => {
   try {
-    const registrationData = req.body;
+    const registration = req.body;
     
-    // Generate a unique registration ID
-    const registrationId = 'REG-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-    const registrationDate = new Date().toISOString();
-    
-    // Create registration object
-    const registration = {
-      registrationId: registrationId,
-      firstName: registrationData.firstName || '',
-      lastName: registrationData.lastName || '',
-      email: registrationData.email || '',
-      phone: registrationData.phone || '',
-      sederNight1: registrationData.sederNight1 || 'off',
-      sederNight2: registrationData.sederNight2 || 'off',
-      dietaryRestrictions: registrationData.dietaryRestrictions || '',
-      hasDonated: false,
-      donationAmount: 0,
-      registrationDate: registrationDate,
-      donationDate: null
-    };
-    
-    // Get current registrations
-    let registrations = await getRegistrations();
+    // Load current registrations
+    const registrations = await getRegistrations();
     
     // Add new registration
     registrations.push(registration);
     
-    // Save back to storage
+    // Save updated registrations
     await saveRegistrations(registrations);
     
-    console.log('New Passover registration stored:', registrationId);
-    
-    res.json({ 
-      success: true, 
-      message: 'Registration stored successfully', 
-      registrationId: registrationId 
-    });
+    res.json({ success: true, message: 'Registration saved successfully' });
   } catch (error) {
     console.error('Error storing registration:', error);
-    res.status(500).json({ success: false, message: 'Failed to store registration' });
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+});
+
+// Delete registration endpoint with improved persistence
+app.delete('/delete-passover-registration/:id', async (req, res) => {
+  try {
+    const registrationId = req.params.id;
+    
+    if (!registrationId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Registration ID is required' 
+      });
+    }
+    
+    console.log('Attempting to delete registration:', registrationId);
+    
+    // Get all current registrations and make a copy
+    let allRegistrations = [];
+    
+    // Try multiple sources and merge them
+    try {
+      // Try getting from Vercel Edge Config
+      const { createClient } = require('@vercel/edge-config');
+      
+      // Try standard environment variable approach
+      let edgeConfigClient;
+      try {
+        edgeConfigClient = createClient(process.env.EDGE_CONFIG);
+        const configRegistrations = await edgeConfigClient.get('passover_registrations') || [];
+        console.log(`Loaded ${configRegistrations.length} registrations from Edge Config`);
+        allRegistrations = configRegistrations;
+      } catch (error) {
+        console.log('Could not connect to Edge Config using token, trying object approach...');
+        
+        // Try object approach
+        try {
+          edgeConfigClient = createClient({ token: process.env.EDGE_CONFIG_TOKEN });
+          const configRegistrations = await edgeConfigClient.get('passover_registrations') || [];
+          console.log(`Loaded ${configRegistrations.length} registrations from Edge Config using token object`);
+          allRegistrations = configRegistrations;
+        } catch (error2) {
+          console.log('Both Edge Config approaches failed, using global memory store');
+        }
+      }
+    } catch (error) {
+      console.log('Error accessing Edge Config, using global memory store');
+    }
+    
+    // If Edge Config didn't work, use the global memory store
+    if (allRegistrations.length === 0) {
+      allRegistrations = global.inMemoryRegistrations || [];
+      console.log(`Using in-memory store with ${allRegistrations.length} registrations`);
+    }
+    
+    console.log(`Starting with ${allRegistrations.length} registrations, looking for ID: ${registrationId}`);
+    
+    // Log all registration IDs to help debug
+    const allIds = allRegistrations.map(reg => 
+      reg.registrationId || reg.registration_id || reg.id || 'unknown'
+    );
+    console.log('Available registration IDs:', allIds);
+    
+    // Find and remove the registration
+    const filteredRegistrations = allRegistrations.filter(reg => {
+      const regId = reg.registrationId || reg.registration_id || reg.id;
+      const keep = regId !== registrationId;
+      if (!keep) console.log(`Found registration to remove: ${regId}`);
+      return keep;
+    });
+    
+    // Check if anything was removed
+    if (filteredRegistrations.length === allRegistrations.length) {
+      console.log(`Registration with ID ${registrationId} not found in the ${allRegistrations.length} registrations`);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Registration not found',
+        availableIds: allIds
+      });
+    }
+    
+    console.log(`Removed registration, count reduced from ${allRegistrations.length} to ${filteredRegistrations.length}`);
+    
+    // Update all possible storage locations
+    global.inMemoryRegistrations = filteredRegistrations;
+    
+    // Try to update Edge Config using both methods
+    try {
+      const { createClient } = require('@vercel/edge-config');
+      
+      try {
+        const edgeConfigClient = createClient(process.env.EDGE_CONFIG);
+        await edgeConfigClient.set('passover_registrations', filteredRegistrations);
+        console.log('Updated Edge Config using standard method');
+      } catch (error) {
+        try {
+          const edgeConfigClient = createClient({ token: process.env.EDGE_CONFIG_TOKEN });
+          await edgeConfigClient.set('passover_registrations', filteredRegistrations);
+          console.log('Updated Edge Config using token object method');
+        } catch (error2) {
+          console.log('Failed to update Edge Config, but memory store is updated');
+        }
+      }
+    } catch (error) {
+      console.log('Error accessing Edge Config for update, but memory store is updated');
+    }
+    
+    return res.json({ 
+      success: true, 
+      message: 'Registration deleted successfully',
+      originalCount: allRegistrations.length,
+      newCount: filteredRegistrations.length
+    });
+    
+  } catch (error) {
+    console.error('Error in delete endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete registration: ' + error.message,
+      stack: error.stack
+    });
   }
 });
 
