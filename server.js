@@ -20,6 +20,9 @@ const VERCEL_API_TOKEN = 'zK6O71OhkWKKeCqq3X9NHW8S';
 let isEdgeConfigAvailable = false;
 let edgeConfigClient = null;
 
+// Configure proper environment variable for the SDK
+process.env.EDGE_CONFIG = `https://edge-config.vercel.com/${edgeConfigId}?token=${edgeConfigToken}`;
+
 // Middleware
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, './')));
@@ -45,13 +48,41 @@ function initEdgeConfigClient() {
     // Only create the client if it doesn't exist yet
     if (!edgeConfigClient) {
       console.log('Initializing Edge Config client...');
-      // Using the SDK method as recommended by Vercel
-      edgeConfigClient = createClient(edgeConfigId, { token: edgeConfigToken });
-      console.log('Edge Config client initialized');
+      
+      try {
+        // First attempt: Using the connection string from env variable
+        edgeConfigClient = createClient();
+        console.log('Edge Config client initialized using environment variable');
+        return true;
+      } catch (envError) {
+        console.log('Failed to initialize with environment variable:', envError.message);
+        
+        try {
+          // Second attempt: Using direct parameters
+          edgeConfigClient = createClient(edgeConfigId, { token: edgeConfigToken });
+          console.log('Edge Config client initialized using direct parameters');
+          return true;
+        } catch (directError) {
+          console.log('Failed to initialize with direct parameters:', directError.message);
+          
+          // Third attempt: Using a different parameter format
+          try {
+            const connectionString = `https://edge-config.vercel.com/${edgeConfigId}?token=${edgeConfigToken}`;
+            edgeConfigClient = createClient({ connectionString });
+            console.log('Edge Config client initialized using connection string object');
+            return true;
+          } catch (connectionStringError) {
+            console.error('All SDK initialization attempts failed:', connectionStringError.message);
+            edgeConfigClient = null;
+            return false;
+          }
+        }
+      }
     }
-    return true;
+    return edgeConfigClient !== null;
   } catch (err) {
     console.error('Failed to initialize Edge Config client:', err);
+    edgeConfigClient = null;
     return false;
   }
 }
@@ -62,14 +93,16 @@ async function getRegistrationsFromEdgeConfig() {
     // Try using the SDK client first (optimized for reads)
     if (edgeConfigClient) {
       try {
+        console.log('Attempting to read using SDK client...');
         const data = await edgeConfigClient.get('passover_registrations');
+        console.log('SDK client read successful');
         if (data === null || data === undefined) {
           console.log('No passover_registrations found in Edge Config via SDK, returning empty array');
           return [];
         }
         return Array.isArray(data) ? data : [];
       } catch (sdkError) {
-        console.log('SDK method failed, falling back to direct API call:', sdkError);
+        console.log('SDK method failed, falling back to direct API call:', sdkError.message);
         // Fall through to direct API call
       }
     }
@@ -105,10 +138,23 @@ async function getRegistrationsFromEdgeConfig() {
 
 async function saveRegistrationsToEdgeConfig(registrations) {
   try {
+    // First try SDK client if available (best practice)
+    if (edgeConfigClient) {
+      try {
+        console.log('Attempting to write using SDK client...');
+        await edgeConfigClient.set('passover_registrations', registrations);
+        console.log('Successfully saved registrations using SDK client');
+        return true;
+      } catch (sdkError) {
+        console.log('SDK write failed, falling back to API call:', sdkError.message);
+        // Fall through to API call
+      }
+    }
+    
     // Use the hardcoded API token or environment variable
     const vercelApiToken = process.env.VERCEL_API_TOKEN || VERCEL_API_TOKEN;
     
-    console.log('Updating Edge Config with registrations data...');
+    console.log('Updating Edge Config with registrations data via API...');
     
     // Using the recommended Vercel API endpoint with retries
     const updateResponse = await fetchWithRetry(
@@ -151,18 +197,61 @@ async function saveRegistrationsToEdgeConfig(registrations) {
 // Wrapper functions for getting/saving registrations with graceful degradation
 async function getRegistrations() {
   if (!isEdgeConfigAvailable) {
+    console.warn('Edge Config is not available for data retrieval');
     throw new Error('Registration system is temporarily unavailable - Edge Config is required');
   }
 
-  return await getRegistrationsFromEdgeConfig();
+  try {
+    // Try to get the data, which may also initialize if needed
+    return await getRegistrationsFromEdgeConfig();
+  } catch (error) {
+    console.error('Error in getRegistrations:', error);
+    
+    // Check if this is an "item not found" error, which means we need to initialize
+    if (error.message.includes('404') || error.message.includes('not found') || error.message.includes('undefined')) {
+      try {
+        console.log('Attempting to initialize Edge Config since item was not found...');
+        await initializeEdgeConfig();
+        // After initialization, return empty array
+        return [];
+      } catch (initError) {
+        console.error('Failed to initialize during get operation:', initError);
+        throw new Error('Failed to initialize registration storage');
+      }
+    }
+    
+    // For other errors, just propagate
+    throw error;
+  }
 }
 
 async function saveRegistrations(registrations) {
   if (!isEdgeConfigAvailable) {
+    console.warn('Edge Config is not available for data saving');
     throw new Error('Registration system is temporarily unavailable - Edge Config is required');
   }
 
-  return await saveRegistrationsToEdgeConfig(registrations);
+  try {
+    return await saveRegistrationsToEdgeConfig(registrations);
+  } catch (error) {
+    console.error('Error in saveRegistrations:', error);
+    
+    // If we get an error about the item not existing, try to initialize first
+    if (error.message.includes('not found') || error.message.includes('404')) {
+      try {
+        console.log('Attempting to initialize Edge Config before saving...');
+        await initializeEdgeConfig();
+        // Try saving again after initialization
+        return await saveRegistrationsToEdgeConfig(registrations);
+      } catch (initError) {
+        console.error('Failed to initialize during save operation:', initError);
+        throw new Error('Failed to initialize registration storage for saving');
+      }
+    }
+    
+    // For other errors, just propagate
+    throw error;
+  }
 }
 
 // Initialize Edge Config passover_registrations if needed
@@ -170,7 +259,26 @@ async function initializeEdgeConfig() {
   try {
     console.log('Checking if passover_registrations exists in Edge Config...');
     
-    // Check if passover_registrations exists
+    // First try using the SDK client
+    if (edgeConfigClient) {
+      try {
+        console.log('Checking for passover_registrations using SDK...');
+        const data = await edgeConfigClient.get('passover_registrations');
+        if (data === undefined || data === null) {
+          console.log('No passover_registrations found via SDK, initializing it...');
+          await edgeConfigClient.set('passover_registrations', []);
+          console.log('Successfully initialized passover_registrations using SDK');
+          return true;
+        }
+        console.log('passover_registrations already exists in Edge Config (via SDK)');
+        return true;
+      } catch (sdkError) {
+        console.log('SDK check failed, falling back to API:', sdkError.message);
+        // Fall through to API method
+      }
+    }
+    
+    // Check if passover_registrations exists using API
     const response = await fetchWithRetry(
       `${edgeConfigUrl}/item/passover_registrations?token=${edgeConfigToken}`,
       { method: 'GET' }
@@ -178,7 +286,7 @@ async function initializeEdgeConfig() {
     
     // If not found, initialize it
     if (response.status === 404) {
-      console.log('Initializing passover_registrations in Edge Config...');
+      console.log('Initializing passover_registrations in Edge Config via API...');
       
       const vercelApiToken = process.env.VERCEL_API_TOKEN || VERCEL_API_TOKEN;
       
@@ -201,7 +309,7 @@ async function initializeEdgeConfig() {
       );
       
       if (initResponse.ok) {
-        console.log('Successfully initialized passover_registrations in Edge Config');
+        console.log('Successfully initialized passover_registrations in Edge Config via API');
         return true;
       } else {
         let errorMessage;
@@ -214,7 +322,7 @@ async function initializeEdgeConfig() {
         throw new Error(`Failed to initialize Edge Config: ${errorMessage}`);
       }
     } else if (response.ok) {
-      console.log('passover_registrations already exists in Edge Config');
+      console.log('passover_registrations already exists in Edge Config (via API)');
       return true;
     } else {
       throw new Error(`Unexpected response when checking passover_registrations: ${response.status}`);
@@ -245,25 +353,30 @@ async function testEdgeConfig(maxAttempts = 3) {
       // Try the SDK client first
       if (edgeConfigClient) {
         try {
+          console.log('Testing Edge Config connection via SDK...');
           const items = await edgeConfigClient.getAll();
           console.log('Edge Config is available via SDK!');
           isEdgeConfigAvailable = true;
           
           // Check for passover_registrations
-          if (items && items.passover_registrations) {
-            console.log(`Found ${Array.isArray(items.passover_registrations) ? items.passover_registrations.length : 'non-array'} registrations in Edge Config`);
+          if (items && items.passover_registrations !== undefined) {
+            const registrationsCount = Array.isArray(items.passover_registrations) 
+              ? items.passover_registrations.length 
+              : 'non-array';
+            console.log(`Found ${registrationsCount} registrations in Edge Config (via SDK)`);
           } else {
-            console.log('No passover_registrations found, will initialize it');
+            console.log('No passover_registrations found via SDK, will initialize it');
             await initializeEdgeConfig();
           }
           
           return true;
         } catch (sdkError) {
-          console.warn('SDK access failed, trying direct API:', sdkError);
+          console.warn('SDK access failed, trying direct API:', sdkError.message);
         }
       }
       
       // Fallback to direct API call
+      console.log('Testing Edge Config connection via direct API...');
       const response = await fetchWithRetry(
         `${edgeConfigUrl}/items?token=${edgeConfigToken}`,
         { method: 'GET' },
@@ -280,15 +393,24 @@ async function testEdgeConfig(maxAttempts = 3) {
           console.log('Edge Config items:', data);
           
           // Check for passover_registrations
-          if (data && data.passover_registrations && Array.isArray(data.passover_registrations)) {
-            console.log(`Found ${data.passover_registrations.length} registrations in Edge Config`);
+          if (data && data.passover_registrations !== undefined) {
+            const registrationsCount = Array.isArray(data.passover_registrations) 
+              ? data.passover_registrations.length 
+              : 'non-array';
+            console.log(`Found ${registrationsCount} registrations in Edge Config (via API)`);
           } else {
-            console.log('No passover_registrations found, will initialize it');
+            console.log('No passover_registrations found via API, will initialize it');
             await initializeEdgeConfig();
           }
         } catch (parseError) {
-          console.warn('Error parsing Edge Config response:', parseError);
+          console.warn('Error parsing Edge Config response:', parseError.message);
           // Still consider Edge Config available if we got a successful response
+          // But try to initialize passover_registrations to be safe
+          try {
+            await initializeEdgeConfig();
+          } catch (initError) {
+            console.warn('Failed to initialize Edge Config during error recovery:', initError.message);
+          }
         }
         
         return true;
@@ -307,7 +429,7 @@ async function testEdgeConfig(maxAttempts = 3) {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     } catch (err) {
-      console.error(`Edge Config test error (attempt ${attempt}/${maxAttempts}):`, err);
+      console.error(`Edge Config test error (attempt ${attempt}/${maxAttempts}):`, err.message);
       
       // If we've tried all attempts, give up
       if (attempt === maxAttempts) {
@@ -445,6 +567,7 @@ app.post('/store-passover-registration', async (req, res) => {
   try {
     // Check if Edge Config is available
     if (!isEdgeConfigAvailable) {
+      console.warn('Rejecting registration attempt: Edge Config is unavailable');
       return res.status(503).json({
         success: false,
         message: 'Registration storage is unavailable - Edge Config is required'
@@ -457,22 +580,68 @@ app.post('/store-passover-registration', async (req, res) => {
     // Add registration date
     registration.registrationDate = new Date().toISOString();
     
-    // Get current registrations from Edge Config
-    const registrations = await getRegistrations();
+    // Verify Edge Config availability one more time (could have changed since server start)
+    if (!isEdgeConfigAvailable) {
+      console.log('Edge Config availability check failed, attempting to initialize...');
+      try {
+        const edgeConfigWorking = await testEdgeConfig(2);
+        if (!edgeConfigWorking) {
+          console.error('Edge Config is still unavailable after recheck');
+          return res.status(503).json({
+            success: false,
+            message: 'Registration storage is temporarily unavailable. Please try again later.'
+          });
+        }
+      } catch (recheckError) {
+        console.error('Error rechecking Edge Config availability:', recheckError);
+        return res.status(503).json({
+          success: false,
+          message: 'Registration storage system is experiencing technical difficulties. Please try again later.'
+        });
+      }
+    }
+    
+    // Get current registrations
+    let registrations;
+    try {
+      console.log('Retrieving current registrations...');
+      registrations = await getRegistrations();
+      console.log(`Retrieved ${registrations.length} existing registrations`);
+    } catch (getError) {
+      console.error('Error retrieving existing registrations:', getError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to access registration storage. Please try again later.'
+      });
+    }
     
     // Add new registration
     registrations.push(registration);
+    console.log(`Adding new registration, total count: ${registrations.length}`);
     
     // Save to Edge Config
-    await saveRegistrations(registrations);
+    try {
+      console.log('Saving updated registrations...');
+      await saveRegistrations(registrations);
+      console.log('Registration saved successfully to Edge Config');
+    } catch (saveError) {
+      console.error('Error saving registration to Edge Config:', saveError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to save your registration. Please try again or contact our support team.'
+      });
+    }
     
-    console.log('Registration saved successfully to Edge Config');
-    res.json({ success: true, message: 'Registration saved successfully' });
+    res.json({ 
+      success: true, 
+      message: 'Registration saved successfully',
+      registrationId: registration.registrationId 
+    });
   } catch (error) {
-    console.error('Error storing registration:', error);
+    console.error('Unexpected error storing registration:', error);
     res.status(500).json({ 
       success: false, 
-      message: error.message || 'Failed to store registration in Edge Config'
+      message: error.message || 'Failed to store registration'
     });
   }
 });
