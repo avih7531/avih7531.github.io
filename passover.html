@@ -537,34 +537,31 @@
             const registrationResult = await registrationResponse.json();
 
             if (!registrationResponse.ok) {
+              // Special handling for Edge Config unavailability
+              if (registrationResponse.status === 503) {
+                throw new Error('Registration system is temporarily unavailable. Please try again later or contact us directly.');
+              }
               throw new Error(registrationResult.message || 'Failed to save registration');
             }
 
             console.log('Registration saved successfully:', registrationResult);
 
-            // Store in localStorage as backup
-            localStorage.setItem('passoverRegistration', JSON.stringify({
-              registrationId,
-              ...formData
-            }));
+            // No longer storing in localStorage since we're only using Edge Config
+            
+            // Check if donation was selected
+            let donationAmount = parseFloat(document.getElementById('customAmount').value);
+
+            // If donation amount is valid and greater than 0, process donation
+            if (donationAmount && !isNaN(donationAmount) && donationAmount > 0) {
+              await processDonation(registrationId, donationAmount);
+            } else {
+              // Zero donation, go directly to success page
+              window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
+            }
           } catch (serverError) {
-            // If server registration fails, still store in localStorage and continue
-            console.warn('Server registration had an issue, using localStorage as backup:', serverError);
-            localStorage.setItem('passoverRegistration', JSON.stringify({
-              registrationId,
-              ...formData
-            }));
-          }
-
-          // Check if donation was selected
-          let donationAmount = parseFloat(document.getElementById('customAmount').value);
-
-          // If donation amount is valid and greater than 0, process donation
-          if (donationAmount && !isNaN(donationAmount) && donationAmount > 0) {
-            await processDonation(registrationId, donationAmount);
-          } else {
-            // Zero donation, go directly to success page
-            window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
+            // Server registration failed completely
+            console.error('Registration failed:', serverError);
+            throw new Error(serverError.message || 'Registration failed. The system may be temporarily unavailable.');
           }
 
         } catch (error) {
