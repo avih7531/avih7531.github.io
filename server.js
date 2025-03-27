@@ -50,7 +50,8 @@ async function getRegistrationsFromEdgeConfig() {
 
 async function saveRegistrationsToEdgeConfig(registrations) {
   // Skip if we already know Edge Config isn't available
-  if (!isEdgeConfigAvailable) {
+  if (typeof isEdgeConfigAvailable === 'undefined' || isEdgeConfigAvailable !== true) {
+    console.log('Edge Config not available, skipping EdgeConfig save');
     return false;
   }
   
@@ -90,7 +91,8 @@ async function saveRegistrationsToEdgeConfig(registrations) {
 
 // Wrapper functions for getting/saving registrations
 async function getRegistrations() {
-  if (isEdgeConfigAvailable) {
+  // Ensure isEdgeConfigAvailable is defined and true before trying to use Edge Config
+  if (typeof isEdgeConfigAvailable !== 'undefined' && isEdgeConfigAvailable === true) {
     try {
       const edgeConfigData = await getRegistrationsFromEdgeConfig();
       if (edgeConfigData && edgeConfigData.length > 0) {
@@ -101,6 +103,13 @@ async function getRegistrations() {
     } catch (err) {
       console.error('Error getting registrations from Edge Config:', err);
     }
+  } else {
+    console.log('Edge Config not available, using in-memory storage');
+  }
+  
+  // Initialize in-memory registrations if undefined
+  if (!global.inMemoryRegistrations) {
+    global.inMemoryRegistrations = [];
   }
   
   // Fall back to local storage
@@ -113,8 +122,9 @@ async function saveRegistrations(registrations) {
   
   // Try to save to Edge Config if available
   try {
-    if (typeof edgeConfig !== 'undefined' && edgeConfig.set) {
-      await edgeConfig.set('passover_registrations', registrations);
+    if (typeof isEdgeConfigAvailable !== 'undefined' && isEdgeConfigAvailable === true) {
+      // Try saving to Edge Config using the API
+      await saveRegistrationsToEdgeConfig(registrations);
     }
   } catch (error) {
     console.error('Error saving to Edge Config, changes only in memory:', error);
@@ -123,7 +133,10 @@ async function saveRegistrations(registrations) {
 
 // Initialize Edge Config passover_registrations if needed
 async function initializeEdgeConfig() {
-  if (!isEdgeConfigAvailable) return false;
+  if (typeof isEdgeConfigAvailable === 'undefined' || isEdgeConfigAvailable !== true) {
+    console.log('Edge Config not available for initialization');
+    return false;
+  }
   
   try {
     // Check if passover_registrations exists
@@ -145,7 +158,7 @@ async function initializeEdgeConfig() {
           items: [{
             operation: 'upsert',
             key: 'passover_registrations',
-            value: global.inMemoryRegistrations
+            value: global.inMemoryRegistrations || []
           }]
         })
       });
@@ -171,6 +184,9 @@ async function testEdgeConfig() {
   try {
     console.log('Testing Edge Config connection...');
     
+    // Set to false by default
+    isEdgeConfigAvailable = false;
+    
     // Try to access Edge Config
     const response = await fetch(`${edgeConfigUrl}/items?token=${edgeConfigToken}`);
     
@@ -194,25 +210,38 @@ async function testEdgeConfig() {
       return true;
     } else {
       console.log(`Edge Config test failed with status: ${response.status}`);
+      isEdgeConfigAvailable = false;
       return false;
     }
   } catch (err) {
     console.error('Edge Config test error:', err);
+    isEdgeConfigAvailable = false;
     return false;
   }
 }
 
 // Initialize system
 async function initialize() {
+  // Make sure we have an in-memory registrations array
+  if (!global.inMemoryRegistrations) {
+    global.inMemoryRegistrations = [];
+  }
+  
   // Test Edge Config availability
-  const edgeConfigWorking = await testEdgeConfig();
-  
-  console.log('Initialization complete - using ' + 
-    (edgeConfigWorking ? 'Edge Config for persistent storage' : 'local memory for temporary storage'));
-  
-  if (!edgeConfigWorking) {
-    console.log('Note: In local development, data will not persist between server restarts');
-    console.log('In Vercel production, data will be properly persisted');
+  try {
+    const edgeConfigWorking = await testEdgeConfig();
+    
+    console.log('Initialization complete - using ' + 
+      (edgeConfigWorking ? 'Edge Config for persistent storage' : 'local memory for temporary storage'));
+    
+    if (!edgeConfigWorking) {
+      console.log('Note: In local development, data will not persist between server restarts');
+      console.log('In Vercel production, data will be properly persisted');
+    }
+  } catch (error) {
+    console.error('Error during initialization:', error);
+    isEdgeConfigAvailable = false;
+    console.log('Using local memory for storage due to initialization error');
   }
 }
 
