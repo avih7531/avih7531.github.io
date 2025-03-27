@@ -468,6 +468,26 @@
     document.addEventListener('DOMContentLoaded', function () {
       // Form submission handler
       const form = document.getElementById('registrationForm');
+      
+      // Maximum retries for API calls
+      const MAX_RETRIES = 3;
+      
+      // Retry function with exponential backoff
+      async function fetchWithRetry(url, options, retries = MAX_RETRIES) {
+        try {
+          const response = await fetch(url, options);
+          return response;
+        } catch (error) {
+          if (retries <= 1) throw error;
+          
+          // Wait with exponential backoff
+          const delay = Math.pow(2, MAX_RETRIES - retries + 1) * 300;
+          console.log(`Retrying in ${delay}ms... (${retries-1} retries left)`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          return fetchWithRetry(url, options, retries - 1);
+        }
+      }
 
       form.addEventListener('submit', async function (event) {
         event.preventDefault();
@@ -526,7 +546,8 @@
 
           // Save registration data to server
           try {
-            const registrationResponse = await fetch('/store-passover-registration', {
+            // Use fetch with retry capability
+            const registrationResponse = await fetchWithRetry('/store-passover-registration', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'
@@ -537,16 +558,19 @@
             const registrationResult = await registrationResponse.json();
 
             if (!registrationResponse.ok) {
-              // Special handling for Edge Config unavailability
+              // Special handling for Edge Config unavailability (HTTP 503)
               if (registrationResponse.status === 503) {
-                throw new Error('Registration system is temporarily unavailable. Please try again later or contact us directly.');
+                // More specific error for Edge Config issues
+                const errorMessage = 'Our registration system is temporarily unavailable. ' +
+                  'Please try again in a few minutes or contact us directly at YKIEVMAN@BOWERYJEWS.ORG ' +
+                  'with your name, email, and which Seder night(s) you would like to attend.';
+                
+                throw new Error(errorMessage);
               }
               throw new Error(registrationResult.message || 'Failed to save registration');
             }
 
             console.log('Registration saved successfully:', registrationResult);
-
-            // No longer storing in localStorage since we're only using Edge Config
             
             // Check if donation was selected
             let donationAmount = parseFloat(document.getElementById('customAmount').value);
@@ -566,7 +590,12 @@
 
         } catch (error) {
           console.error('Error processing registration:', error);
-          alert('There was a problem with your registration: ' + error.message);
+          // More user-friendly error message
+          let errorMessage = error.message;
+          if (!errorMessage.includes('@') && !errorMessage.includes('unavailable')) {
+            errorMessage = 'There was a problem with your registration. Please try again later or contact us directly.';
+          }
+          alert(errorMessage);
 
           // Re-enable submit button and hide processing message
           document.getElementById('submitBtn').disabled = false;
@@ -594,8 +623,8 @@
           alert('Your registration is complete! We will now redirect you to our secure donation page in a new tab.');
 
           try {
-            // Request checkout session from server
-            const response = await fetch('/create-passover-checkout-session', {
+            // Request checkout session from server with retries
+            const response = await fetchWithRetry('/create-passover-checkout-session', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'

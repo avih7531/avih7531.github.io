@@ -285,18 +285,51 @@
     // Store all registrations for filtering
     let allRegistrations = [];
     
+    // Fetch with retry capability
+    async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+      let lastError;
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const response = await fetch(url, options);
+          return response;
+        } catch (error) {
+          console.warn(`Fetch attempt ${attempt + 1} failed:`, error);
+          lastError = error;
+          
+          if (attempt < maxRetries - 1) {
+            // Exponential backoff
+            const delay = Math.pow(2, attempt) * 500;
+            console.log(`Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+      
+      throw lastError || new Error('All fetch attempts failed');
+    }
+    
     // Load registrations from the server
     async function loadRegistrations() {
       try {
-        document.getElementById('refreshBtn').disabled = true;
-        document.getElementById('refreshBtn').textContent = 'Loading...';
+        // Update UI to show loading state
+        const refreshBtn = document.getElementById('refreshBtn');
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = 'Loading...';
         
-        const response = await fetch(`/admin/registrations?password=${ADMIN_PASSWORD}`);
+        // Show a loading message in the table
+        const tableBody = document.getElementById('registrationsTableBody');
+        tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center;">
+          Loading registrations... Please wait.
+        </td></tr>`;
+        
+        // Fetch registrations with retry
+        const response = await fetchWithRetry(`/admin/registrations?password=${ADMIN_PASSWORD}`);
         
         if (!response.ok) {
           // Handle Edge Config unavailability specifically
           if (response.status === 503) {
-            throw new Error('Registration system is temporarily unavailable. Edge Config storage cannot be accessed.');
+            throw new Error('Registration system is temporarily unavailable. Edge Config storage cannot be accessed. Please try again later.');
           }
           
           const data = await response.json();
@@ -310,16 +343,26 @@
           updateStats(allRegistrations);
           displayRegistrations(allRegistrations);
         } else {
-          alert('Error: ' + data.message);
+          throw new Error(data.message || 'Server returned an error');
         }
       } catch (error) {
         console.error('Error loading registrations:', error);
-        alert('Failed to load registrations: ' + error.message);
         
-        // Show a message in the table
+        // More informative alert based on error type
+        if (error.message.includes('Edge Config')) {
+          alert('The registration system is temporarily unavailable due to Edge Config connectivity issues. Please try again later.');
+        } else {
+          alert('Failed to load registrations: ' + error.message);
+        }
+        
+        // Show a more descriptive error message in the table
         const tableBody = document.getElementById('registrationsTableBody');
-        tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: #c0392b;">
-          Error: ${error.message}
+        tableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: #c0392b; padding: 20px;">
+          <div style="margin-bottom: 10px; font-weight: bold;">Error Loading Registrations</div>
+          <div>${error.message}</div>
+          <div style="margin-top: 10px; font-size: 0.9em;">
+            Please try again later or contact technical support if the problem persists.
+          </div>
         </td></tr>`;
         
         // Clear the stats
@@ -328,8 +371,10 @@
         document.getElementById('secondNightCount').textContent = '-';
         document.getElementById('totalDonations').textContent = '-';
       } finally {
-        document.getElementById('refreshBtn').disabled = false;
-        document.getElementById('refreshBtn').textContent = 'Refresh Data';
+        // Reset the button state
+        const refreshBtn = document.getElementById('refreshBtn');
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = 'Refresh Data';
       }
     }
     
@@ -362,7 +407,7 @@
       
       if (registrations.length === 0) {
         const row = document.createElement('tr');
-        row.innerHTML = '<td colspan="8" style="text-align: center;">No registrations found</td>';
+        row.innerHTML = '<td colspan="9" style="text-align: center; padding: 20px;">No registrations found</td>';
         tableBody.appendChild(row);
         return;
       }
@@ -371,8 +416,15 @@
         const row = document.createElement('tr');
         
         // Format date
-        const regDate = new Date(reg.registrationDate);
-        const formattedDate = regDate.toLocaleDateString() + ' ' + regDate.toLocaleTimeString();
+        let formattedDate = 'Unknown';
+        if (reg.registrationDate) {
+          try {
+            const regDate = new Date(reg.registrationDate);
+            formattedDate = regDate.toLocaleDateString() + ' ' + regDate.toLocaleTimeString();
+          } catch (e) {
+            console.warn('Invalid date format:', reg.registrationDate);
+          }
+        }
         
         // Check seder nights
         const isFirstNight = reg.sederNight1 === 'on' || reg.sederNight1 === true || reg.sederNight1 === 'yes';
@@ -438,12 +490,18 @@
     
     // Export registrations to CSV
     function exportToCsv() {
+      if (allRegistrations.length === 0) {
+        alert('No registrations to export.');
+        return;
+      }
+      
       // Column headers
       const headers = [
         'Registration ID',
         'First Name',
         'Last Name',
         'Email',
+        'Phone',
         'First Night',
         'Second Night',
         'Donated',
@@ -461,6 +519,7 @@
           reg.firstName || '',
           reg.lastName || '',
           reg.email || '',
+          reg.phone || '',
           isFirstNight ? 'Yes' : 'No',
           isSecondNight ? 'Yes' : 'No',
           reg.hasDonated ? 'Yes' : 'No',
@@ -490,6 +549,7 @@
     // Delete handling function
     async function handleDeleteRegistration(event) {
       const registrationId = event.target.getAttribute('data-id');
+      const btn = event.target;
       
       if (!registrationId) {
         alert('Could not identify registration to delete');
@@ -502,12 +562,12 @@
       }
       
       try {
-        // Disable the button
-        event.target.disabled = true;
-        event.target.textContent = 'Deleting...';
+        // Update button state
+        btn.disabled = true;
+        btn.textContent = 'Deleting...';
         
-        // Send delete request to server
-        const response = await fetch(`/delete-passover-registration/${registrationId}`, {
+        // Send delete request to server with retry
+        const response = await fetchWithRetry(`/delete-passover-registration/${registrationId}`, {
           method: 'DELETE'
         });
         
@@ -521,25 +581,36 @@
           throw new Error(error.message || 'Failed to delete registration');
         }
         
+        const result = await response.json();
+        
         // If successful, remove the row from the table
-        const row = event.target.closest('tr');
+        const row = btn.closest('tr');
         if (row) {
-          row.remove();
+          // Add a fade-out effect
+          row.style.transition = 'opacity 0.5s';
+          row.style.opacity = '0';
+          setTimeout(() => row.remove(), 500);
         }
         
         // Show success message
         alert('Registration successfully removed');
         
-        // Optionally, refresh the table to show updated data
-        loadRegistrations();
+        // Refresh the table to show updated data
+        setTimeout(loadRegistrations, 600);
         
       } catch (error) {
         console.error('Error deleting registration:', error);
-        alert('Error: ' + error.message);
+        
+        // Show a more specific error message
+        if (error.message.includes('Edge Config')) {
+          alert('The registration system is temporarily unavailable due to Edge Config connectivity issues. Please try again later.');
+        } else {
+          alert('Error: ' + error.message);
+        }
         
         // Re-enable the button
-        event.target.disabled = false;
-        event.target.textContent = 'Remove';
+        btn.disabled = false;
+        btn.textContent = 'Remove';
       }
     }
   </script>
