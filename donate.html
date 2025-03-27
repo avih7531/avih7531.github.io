@@ -337,6 +337,111 @@
         width: 100%;
       }
     }
+
+    /* Add these styles to improve the form appearance */
+    .donation-form {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: bold;
+      color: #003366;
+    }
+    
+    .form-control {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+    
+    .amount-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .amount-option {
+      position: relative;
+      flex: 1;
+      min-width: 100px;
+    }
+    
+    .amount-option input[type="radio"] {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .amount-option label {
+      display: block;
+      padding: 15px 10px;
+      text-align: center;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .amount-option input[type="radio"]:checked + label {
+      background-color: #003366;
+      color: white;
+      border-color: #003366;
+    }
+    
+    .custom-amount {
+      max-width: 200px;
+    }
+    
+    .donation-type {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .donation-type label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    
+    .donation-type input[type="radio"] {
+      margin-right: 8px;
+    }
+    
+    button[type="submit"] {
+      background-color: #003366;
+      color: white;
+      border: none;
+      padding: 12px 25px;
+      font-size: 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    button[type="submit"]:hover {
+      background-color: #004080;
+    }
+    
+    button[type="submit"]:disabled {
+      background-color: #999;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 
@@ -361,90 +466,83 @@
   </div>
 
   <div class="hero">
-    <h1>Support Rejewvenate</h1>
-    <p>Help us create a home away from home</p>
+    <h1>Donate to Rejewvenate</h1>
+    <p>Support our mission and help us create a home away from home for Jewish students</p>
   </div>
 
-  <div class="donate-container">
-    <div class="why-donate">
-      <h2>Why Your Support Matters</h2>
-      <p>Your generous donations help us create a vibrant Jewish community for students. Your support enables us to:</p>
-      <ul style="text-align: left; margin: 12px 0; list-style-position: inside;">
-        <li>Host weekly Shabbat dinners for students</li>
-        <li>Organize educational and cultural events</li>
-        <li>Provide resources for Jewish learning and growth</li>
-        <li>Create a welcoming space for all Jewish students on campus</li>
-      </ul>
+  <section class="content">
+    <div class="donation-form">
+      <h2>Make a Donation</h2>
+      <p>Your generous contribution helps us provide meaningful Jewish experiences for college students.</p>
+      
+      <form id="donationForm">
+        <div class="form-group">
+          <label>Choose Donation Type:</label>
+          <div class="donation-type">
+            <label>
+              <input type="radio" name="donationType" value="one-time" checked>
+              One-time Donation
+            </label>
+            <label>
+              <input type="radio" name="donationType" value="recurring">
+              Monthly Donation
+            </label>
+            <label>
+              <input type="radio" name="donationType" value="sponsor">
+              Sponsor a Student
+            </label>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Select Amount:</label>
+          <div class="amount-options">
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount1" value="18">
+              <label for="amount1">$18</label>
+            </div>
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount2" value="36">
+              <label for="amount2">$36</label>
+            </div>
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount3" value="72">
+              <label for="amount3">$72</label>
+            </div>
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount4" value="180">
+              <label for="amount4">$180</label>
+            </div>
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount5" value="360">
+              <label for="amount5">$360</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="customAmount">Or enter a custom amount:</label>
+            <input type="number" id="customAmount" class="form-control custom-amount" placeholder="$ Custom amount">
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="firstName">First Name:</label>
+          <input type="text" id="firstName" name="firstName" class="form-control" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="lastName">Last Name:</label>
+          <input type="text" id="lastName" name="lastName" class="form-control" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="email">Email:</label>
+          <input type="email" id="email" name="email" class="form-control" required>
+        </div>
+        
+        <button type="submit" id="submitDonation">Donate</button>
+      </form>
     </div>
-
-    <h2 style="text-align: center; margin-bottom: 20px; color: #003366;">Choose Your Donation Option</h2>
-
-    <div class="donation-options">
-      <div class="donation-option">
-        <h3>One-Time Donation</h3>
-        <p>Support our current initiatives with a one-time gift</p>
-        <div class="donation-amount">
-          <button class="amount-btn" data-amount="1800">$18</button>
-          <button class="amount-btn" data-amount="3600">$36</button>
-          <button class="amount-btn" data-amount="7200">$72</button>
-          <button class="amount-btn" data-amount="18000">$180</button>
-        </div>
-        <div class="custom-amount">
-          <input type="number" id="one-time-custom" placeholder="Custom amount" min="1">
-          <span>USD</span>
-        </div>
-        <button class="donate-btn" id="one-time-donate-btn" data-donation-type="one-time">Donate Now</button>
-      </div>
-
-      <div class="donation-option">
-        <h3>Monthly Donation</h3>
-        <p>Become a sustaining supporter with monthly donations</p>
-        <div class="donation-amount">
-          <button class="amount-btn" data-amount="1000">$10/mo</button>
-          <button class="amount-btn" data-amount="1800">$18/mo</button>
-          <button class="amount-btn" data-amount="3600">$36/mo</button>
-          <button class="amount-btn" data-amount="5000">$50/mo</button>
-        </div>
-        <div class="custom-amount">
-          <input type="number" id="monthly-custom" placeholder="Custom amount" min="1">
-          <span>USD/month</span>
-        </div>
-        <button class="donate-btn" id="monthly-donate-btn" data-donation-type="monthly">Become a Monthly Supporter</button>
-      </div>
-
-      <div class="donation-option">
-        <h3>Sponsor an Event</h3>
-        <p>Help us host Shabbat dinners, holiday celebrations, and more</p>
-        <div class="donation-amount">
-          <button class="amount-btn" data-amount="18000">$180</button>
-          <button class="amount-btn" data-amount="36000">$360</button>
-          <button class="amount-btn" data-amount="50000">$500</button>
-          <button class="amount-btn" data-amount="100000">$1000</button>
-        </div>
-        <div class="custom-amount">
-          <input type="number" id="sponsor-custom" placeholder="Custom amount" min="1">
-          <span>USD</span>
-        </div>
-        <button class="donate-btn" id="sponsor-donate-btn" data-donation-type="sponsor">Sponsor Now</button>
-      </div>
-
-      <div class="donation-option">
-        <h3>Other Ways to Give</h3>
-        <p>Looking for other ways to support our mission?</p>
-        <ul style="margin-left: 20px; margin-top: 10px;">
-          <li>Volunteer your time</li>
-          <li>Donate supplies</li>
-          <li>Partner with us</li>
-        </ul>
-        <button class="donate-btn" style="margin-top: 20px;">Contact Us</button>
-      </div>
-    </div>
-
-    <div style="text-align: center; margin: 30px 0;">
-      <h3>For tax-deductible donations or other inquiries</h3>
-      <p>Please contact us at <a href="mailto:donate@rejewvenate.org" style="color: #003366;">donate@rejewvenate.org</a></p>
-    </div>
-  </div>
+  </section>
 
   <footer>
     <div class="socials">
@@ -461,121 +559,79 @@
     </div>
   </footer>
 
-  <!-- Stripe integration script -->
   <script>
-    // Using correct test mode publishable key
-    const stripe = Stripe('pk_test_51PT3twJb8qwjsbrobcJWgcCrc6P9oCpMwAPXBKwhuUXJEZpaKQ8IuHOTJjfT7wA8JHB3JRN4S18jqNBlnXL0mdrY00YLK64MJk');
+    // Initialize Stripe
+    const stripe = Stripe('pk_test_51PT3twJb8qwjsbroDrHmZ6KGOL3GRycdwQxwVsF8qfhaNYNQd0UQXlsKDTfWt0oNeSVrv5t4xSg0kkuQfqwDl1HF00NkblQOPw');
     
-    // Handle amount selection
-    document.querySelectorAll('.amount-btn').forEach(button => {
-      button.addEventListener('click', function() {
-        // Remove active class from all buttons in the same container
-        const buttons = this.closest('.donation-option').querySelectorAll('.amount-btn');
-        buttons.forEach(btn => btn.classList.remove('active'));
+    // Form submission handler
+    document.getElementById('donationForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      // Disable submit button to prevent multiple submissions
+      const submitButton = document.getElementById('submitDonation');
+      submitButton.disabled = true;
+      submitButton.textContent = 'Processing...';
+      
+      try {
+        // Get form data
+        const donationType = document.querySelector('input[name="donationType"]:checked').value;
+        let donationAmount;
         
-        // Add active class to this button
-        this.classList.add('active');
+        if (document.getElementById('customAmount').value) {
+          donationAmount = parseFloat(document.getElementById('customAmount').value);
+        } else {
+          const selectedAmount = document.querySelector('input[name="amount"]:checked');
+          donationAmount = selectedAmount ? parseFloat(selectedAmount.value) : 0;
+        }
         
-        // Clear the custom amount input in this donation option
-        const customInput = this.closest('.donation-option').querySelector('input[type="number"]');
-        if (customInput) {
-          customInput.value = '';
+        if (!donationAmount || isNaN(donationAmount) || donationAmount <= 0) {
+          alert('Please select or enter a valid donation amount.');
+          submitButton.disabled = false;
+          submitButton.textContent = 'Donate';
+          return;
         }
-      });
-    });
-    
-    // Handle custom amount input interaction
-    document.querySelectorAll('.custom-amount input').forEach(input => {
-      input.addEventListener('input', function() {
-        // If user types in the custom amount field, unselect any active preset buttons
-        if (this.value.trim() !== '') {
-          const buttons = this.closest('.donation-option').querySelectorAll('.amount-btn');
-          buttons.forEach(btn => btn.classList.remove('active'));
-        }
-      });
-    });
-    
-    // Handle donation button clicks
-    document.querySelectorAll('.donate-btn').forEach(button => {
-      if (button.id === 'one-time-donate-btn' || button.id === 'monthly-donate-btn' || button.id === 'sponsor-donate-btn') {
-        button.addEventListener('click', async function() {
-          const donationType = this.getAttribute('data-donation-type');
-          let amount = 0;
-          
-          // Find the selected amount button or use custom amount
-          const container = this.closest('.donation-option');
-          const selectedButton = container.querySelector('.amount-btn.active');
-          const customInput = container.querySelector('input[type="number"]');
-          
-          if (selectedButton) {
-            amount = parseInt(selectedButton.getAttribute('data-amount'));
-          } else if (customInput && customInput.value) {
-            // Convert dollars to cents for Stripe
-            amount = Math.floor(parseFloat(customInput.value) * 100);
-          } else {
-            alert('Please select or enter an amount to donate.');
-            return;
-          }
-          
-          if (amount < 100) {
-            alert('Minimum donation amount is $1.00.');
-            return;
-          }
-          
-          // Disable the button to prevent multiple clicks
-          this.disabled = true;
-          this.textContent = 'Processing...';
-          
-          try {
-            // Call our backend API to create a checkout session
-            const response = await fetch('/create-checkout-session', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                donationType,
-                amount,
-              }),
-            });
-            
-            if (!response.ok) {
-              throw new Error('Network response was not ok');
-            }
-            
-            const session = await response.json();
-            
-            // Redirect to Stripe Checkout
-            const result = await stripe.redirectToCheckout({
-              sessionId: session.id,
-            });
-            
-            if (result.error) {
-              alert(result.error.message);
-              this.disabled = false;
-              this.textContent = this.id === 'one-time-donate-btn' ? 'Donate Now' : 
-                                this.id === 'monthly-donate-btn' ? 'Become a Monthly Supporter' : 'Sponsor Now';
-            }
-          } catch (error) {
-            console.error('Error:', error);
-            alert('Something went wrong. Please try again later.');
-            this.disabled = false;
-            this.textContent = this.id === 'one-time-donate-btn' ? 'Donate Now' : 
-                              this.id === 'monthly-donate-btn' ? 'Become a Monthly Supporter' : 'Sponsor Now';
-          }
+        
+        // Create form data object
+        const formData = {
+          donationAmount: donationAmount,
+          donationType: donationType,
+          firstName: document.getElementById('firstName').value,
+          lastName: document.getElementById('lastName').value,
+          email: document.getElementById('email').value
+        };
+        
+        console.log('Sending donation request:', formData);
+        
+        // Send to server to create checkout session
+        const response = await fetch('/create-checkout-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
         });
+        
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          // Redirect to Stripe checkout using the URL from the response
+          window.location.href = data.url;
+        } else {
+          alert('Error: ' + (data.message || 'Unable to process donation'));
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred while processing your donation. Please try again.');
       }
+      
+      // Re-enable button
+      submitButton.disabled = false;
+      submitButton.textContent = 'Donate';
     });
-    
-    // Add styling for active buttons
-    const style = document.createElement('style');
-    style.textContent = `
-      .amount-btn.active {
-        background-color: #003366;
-        color: white;
-      }
-    `;
-    document.head.appendChild(style);
   </script>
 </body>
 

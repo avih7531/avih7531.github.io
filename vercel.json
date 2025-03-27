@@ -23,33 +23,15 @@
       "config": { "excludeFiles": ["server.js"] }
     }
   ],
-  "routes": [
-    {
-      "src": "/admin/registrations",
-      "dest": "server.js"
-    },
-    {
-      "src": "/registration/(.*)",
-      "dest": "server.js"
-    },
-    {
-      "src": "/send-contact-form",
-      "dest": "server.js"
-    },
-    {
-      "src": "/create-checkout-session",
-      "dest": "server.js"
-    },
-    {
-      "src": "/stripe-webhook",
-      "dest": "server.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
-  ],
-  "env": {
-    "EDGE_CONFIG": "ecfg_u19oenik3gvnaimrebefbcaoe6dy"
-  }
+  "rewrites": [
+    { "source": "/store-passover-registration", "destination": "/server.js" },
+    { "source": "/update-registration-donation", "destination": "/server.js" },
+    { "source": "/registration/:id", "destination": "/server.js" },
+    { "source": "/admin/registrations", "destination": "/server.js" },
+    { "source": "/create-checkout-session", "destination": "/server.js" },
+    { "source": "/create-passover-checkout-session", "destination": "/server.js" },
+    { "source": "/send-contact-form", "destination": "/server.js" },
+    { "source": "/stripe-webhook", "destination": "/server.js" },
+    { "source": "/favicon.ico", "destination": "/server.js" }
+  ]
 } 
