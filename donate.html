@@ -598,8 +598,13 @@
         
         console.log('Sending donation request:', formData);
         
+        // Determine the correct URL based on the current environment
+        const baseUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+          ? '' // Empty for local development
+          : ''; // Empty for production as the path will be relative to the current domain
+        
         // Send to server to create checkout session
-        const response = await fetch('/create-checkout-session', {
+        const response = await fetch(`${baseUrl}/create-checkout-session`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -607,11 +612,16 @@
           body: JSON.stringify(formData)
         });
         
+        console.log('Response status:', response.status);
+        
         if (!response.ok) {
-          throw new Error('Network response was not ok');
+          const errorText = await response.text();
+          console.error('Response error:', errorText);
+          throw new Error(`Server responded with ${response.status}: ${errorText}`);
         }
         
         const data = await response.json();
+        console.log('Response data:', data);
         
         if (data.success) {
           // Redirect to Stripe checkout using the URL from the response

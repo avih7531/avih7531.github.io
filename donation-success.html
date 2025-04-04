@@ -387,6 +387,45 @@
       <a href="admin-registrations.html" style="color: white; text-decoration: none; font-size: 0.9rem; padding: 10px; position: absolute; right: 0;">Admin Login</a>
     </div>
   </footer>
+  
+  <script>
+    // Handle query parameters and customize the page if needed
+    document.addEventListener('DOMContentLoaded', function() {
+      // Get URL parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const isDonation = urlParams.get('donation') === 'true';
+      const donationType = urlParams.get('type') || 'one-time';
+      
+      // Default messages
+      let heading = "Thank You for Your Support!";
+      let message = "Your donation to Rejewvenate has been successfully processed.";
+      
+      // Customize based on donation type
+      if (isDonation) {
+        const messageElement = document.querySelector('.success-container p');
+        
+        if (donationType === 'recurring') {
+          heading = "Thank You for Your Monthly Support!";
+          message = "Your recurring monthly donation to Rejewvenate has been set up successfully.";
+        } else if (donationType === 'sponsor') {
+          heading = "Thank You for Sponsoring a Student!";
+          message = "Your sponsorship donation to Rejewvenate has been successfully processed.";
+        }
+        
+        // Update the heading and message
+        document.querySelector('.success-container h1').textContent = heading;
+        if (messageElement) {
+          messageElement.textContent = message;
+        }
+      }
+
+      // Log for debugging
+      console.log('Donation success page loaded with params:', {
+        isDonation,
+        donationType
+      });
+    });
+  </script>
 </body>
 
 </html> 
