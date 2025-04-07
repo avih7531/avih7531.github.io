@@ -348,20 +348,37 @@ router.get('/admin/blob-status', async (req, res) => {
       });
     }
 
-    // Check if blob exists
-    const blobResult = await blobStorage.getRegistrationsFromBlob();
+    // List all blobs to find any registration blobs
+    const allBlobs = await blobStorage.listBlobs();
+    console.log(`Found ${allBlobs.blobs ? allBlobs.blobs.length : 0} total blobs in storage`);
+    
+    // Look for registration blobs
+    const baseFilename = config.blob.filename.replace('.json', '');
+    const registrationBlobs = allBlobs.blobs ? 
+      allBlobs.blobs.filter(b => b.pathname.startsWith(baseFilename) && b.pathname.endsWith('.json')) : 
+      [];
+    
+    console.log(`Found ${registrationBlobs.length} registration blobs`);
+    
+    // Get current blob URL 
     const blobUrl = blobStorage.getRegistrationBlobUrl();
     
-    res.json({
+    // Try to get the actual registrations data
+    const blobResult = await blobStorage.getRegistrationsFromBlob();
+    
+    // Build response with detailed blob information
+    const response = {
       success: true,
       enabled: true,
       hasMirror: blobResult.success,
       registrationCount: blobResult.success ? blobResult.data.length : 0,
+      blobFound: registrationBlobs.length > 0,
+      registrationBlobCount: registrationBlobs.length,
       syncInterval: config.blob.syncInterval,
       accessMode: config.blob.accessMode,
       storeId: config.blob.storeId,
+      baseFilename: baseFilename,
       directUrl: blobUrl,
-      filename: config.blob.filename,
       hasToken: !!config.blob.token,
       isPrimary: usingBlobAsPrimary,
       edgeConfig: {
@@ -369,7 +386,27 @@ router.get('/admin/blob-status', async (req, res) => {
         failureCount: edgeFailures,
         isPrimary: !usingBlobAsPrimary
       }
-    });
+    };
+    
+    // Add detailed blob listing if available
+    if (registrationBlobs.length > 0) {
+      // Sort by upload date (newest first)
+      const sortedBlobs = registrationBlobs.sort((a, b) => 
+        new Date(b.uploadedAt) - new Date(a.uploadedAt)
+      );
+      
+      response.blobs = sortedBlobs.map(blob => ({
+        pathname: blob.pathname,
+        url: `${config.blob.baseUrl}/${blob.pathname}`,
+        size: blob.size,
+        uploadedAt: blob.uploadedAt
+      }));
+      
+      // Add the most recent blob
+      response.mostRecentBlob = response.blobs[0];
+    }
+    
+    res.json(response);
   } catch (error) {
     console.error('Error checking blob status:', error);
     
@@ -1414,6 +1451,89 @@ router.post('/admin/repair-edge-config', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to repair Edge Config: ' + error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * Force system to use blob storage as primary
+ */
+router.post('/admin/use-blob-as-primary', async (req, res) => {
+  try {
+    console.log('Forcing system to use blob storage as primary storage...');
+    
+    // First check if blob storage is enabled and working
+    if (!blobStorage.isBlobMirroringEnabled()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot use blob as primary storage because blob mirroring is not enabled'
+      });
+    }
+    
+    // Force Edge Config to be marked as unavailable
+    if (edgeConfig.markEdgeConfigAsUnavailable) {
+      edgeConfig.markEdgeConfigAsUnavailable();
+      console.log('Marked Edge Config as unavailable');
+    } else if (edgeConfig.setFailureCount) {
+      // Set failure count above threshold as alternative
+      edgeConfig.setFailureCount(config.edge.failureThreshold + 1);
+      console.log(`Set Edge Config failure count to ${config.edge.failureThreshold + 1}`);
+    } else {
+      return res.status(500).json({
+        success: false,
+        message: 'Cannot force fallback behavior - helper functions not available'
+      });
+    }
+    
+    // Now ensure blob storage has the most current data
+    const localData = await edgeConfig.getRegistrationsFromLocalStorage();
+    console.log(`Found ${localData.length} registrations in local storage`);
+    
+    // Save to blob storage
+    const saveResult = await blobStorage.saveRegistrationsToBlob(localData);
+    
+    if (!saveResult.success) {
+      console.error('Failed to save data to blob storage:', saveResult.error || 'Unknown error');
+      
+      // Still continue since we've configured the system to use blob storage
+      return res.json({
+        success: true,
+        message: 'Configured system to use blob storage as primary, but failed to sync local data',
+        error: saveResult.error || 'Unknown error',
+        storageConfig: {
+          edgeConfigAvailable: edgeConfig.isEdgeConfigAvailable(),
+          edgeConfigFailureCount: edgeConfig.getFailureCount ? edgeConfig.getFailureCount() : 'Unknown',
+          blobEnabled: blobStorage.isBlobMirroringEnabled(),
+          localDataCount: localData.length
+        }
+      });
+    }
+    
+    // Verify we can read from blob
+    const verifyResult = await blobStorage.getRegistrationsFromBlob();
+    
+    res.json({
+      success: true,
+      message: 'Successfully configured system to use blob storage as primary',
+      storageConfig: {
+        edgeConfigAvailable: edgeConfig.isEdgeConfigAvailable(),
+        edgeConfigFailureCount: edgeConfig.getFailureCount ? edgeConfig.getFailureCount() : 'Unknown',
+        blobEnabled: blobStorage.isBlobMirroringEnabled(),
+        blobDataCount: verifyResult.success ? verifyResult.data.length : 0,
+        localDataCount: localData.length
+      },
+      blobStatus: {
+        dataAccessible: verifyResult.success,
+        blobUrl: blobStorage.getRegistrationBlobUrl()
+      }
+    });
+  } catch (error) {
+    console.error('Error configuring blob as primary storage:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to configure blob as primary storage: ' + error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }

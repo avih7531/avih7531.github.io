@@ -11,6 +11,9 @@ const { fetchWithRetry } = require('../utils/fetch-utils');
 let lastSyncTime = null;
 let syncInProgress = false;
 
+// Track the current blob pathname (with the random string)
+let currentBlobPathname = null;
+
 // Blob storage configuration options with store ID and token
 const blobOptions = {
   storeId: config.blob.storeId,
@@ -47,7 +50,30 @@ async function saveRegistrationsToBlob(registrations) {
     // Convert registrations to JSON string
     const registrationsJson = JSON.stringify(registrations, null, 2);
     
-    // Upload to Vercel Blob
+    // If we have an existing blob path, try to update that one for consistency
+    if (currentBlobPathname) {
+      console.log(`Attempting to update existing blob: ${currentBlobPathname}`);
+      try {
+        // Upload to the same path
+        const blob = await put(currentBlobPathname, registrationsJson, {
+          contentType: config.blob.contentType, 
+          access: config.blob.accessMode,
+          ...blobOptions
+        });
+        
+        console.log(`Successfully updated existing blob at: ${blob.url}`);
+        
+        // Update the last sync time
+        lastSyncTime = new Date();
+        
+        return { success: true, url: blob.url, pathname: currentBlobPathname };
+      } catch (updateError) {
+        console.warn(`Failed to update existing blob: ${updateError.message}, will create new blob`);
+        // Continue with creating a new blob
+      }
+    }
+    
+    // Upload to Vercel Blob with base filename (Vercel will add a random string)
     const blob = await put(config.blob.filename, registrationsJson, {
       contentType: config.blob.contentType, 
       access: config.blob.accessMode,
@@ -55,14 +81,18 @@ async function saveRegistrationsToBlob(registrations) {
     });
     
     console.log(`Successfully saved registrations to Blob storage at: ${blob.url}`);
+    console.log(`Blob pathname: ${blob.pathname}`);
+    
+    // Store the new pathname for future updates
+    currentBlobPathname = blob.pathname;
     
     // Update the last sync time
     lastSyncTime = new Date();
     
-    return { success: true, url: blob.url };
+    return { success: true, url: blob.url, pathname: blob.pathname };
   } catch (err) {
     console.error('Error saving registrations to Blob storage:', err);
-    return { success: false, url: null };
+    return { success: false, url: null, error: err.message };
   }
 }
 
@@ -79,19 +109,32 @@ async function getRegistrationsFromBlob() {
   try {
     console.log('Attempting to fetch registrations from Blob storage...');
     
-    // First check if the blob exists
+    // First check if the blob exists by finding any file that starts with the filename prefix
     const blobs = await list({ ...blobOptions });
-    const blobFile = blobs.blobs.find(b => b.pathname === config.blob.filename);
+    console.log(`Found ${blobs.blobs.length} blobs in storage, looking for registration data...`);
     
-    if (!blobFile) {
+    // Find any blobs that start with our filename prefix (without extension)
+    const baseFilename = config.blob.filename.replace('.json', '');
+    const potentialBlobs = blobs.blobs.filter(b => 
+      b.pathname.startsWith(baseFilename) && b.pathname.endsWith('.json')
+    );
+    
+    console.log(`Found ${potentialBlobs.length} potential registration blobs with pattern ${baseFilename}*.json`);
+    
+    if (potentialBlobs.length === 0) {
       console.log('No registrations blob found in storage');
       return { success: false, data: [], message: 'No registrations blob found' };
     }
     
-    console.log(`Found blob: ${blobFile.pathname}, size: ${blobFile.size}, uploaded: ${blobFile.uploadedAt}`);
+    // Use the most recently uploaded blob
+    const blobFile = potentialBlobs.sort((a, b) => 
+      new Date(b.uploadedAt) - new Date(a.uploadedAt)
+    )[0];
     
-    // Get the blob file
-    const blob = await get(config.blob.filename, { ...blobOptions });
+    console.log(`Using most recent blob: ${blobFile.pathname}, size: ${blobFile.size}, uploaded: ${blobFile.uploadedAt}`);
+    
+    // Get the blob file using its actual pathname
+    const blob = await get(blobFile.pathname, { ...blobOptions });
     
     if (!blob) {
       console.log('Failed to fetch registrations blob');
@@ -137,6 +180,10 @@ async function getRegistrationsFromBlob() {
         }
         
         console.log(`Successfully parsed JSON, found ${data.length} registrations`);
+        
+        // Store the current blob pathname for future reference
+        currentBlobPathname = blobFile.pathname;
+        
         return { success: true, data };
       } catch (parseError) {
         console.error('Error parsing JSON from blob:', parseError);
@@ -255,8 +302,39 @@ async function deleteRegistrationsBlob() {
 
   try {
     console.log('Deleting registrations blob file...');
-    await del(config.blob.filename, { ...blobOptions });
-    console.log('Successfully deleted registrations blob');
+    
+    // If we have a specific pathname, delete that
+    if (currentBlobPathname) {
+      console.log(`Deleting specific blob: ${currentBlobPathname}`);
+      await del(currentBlobPathname, { ...blobOptions });
+      console.log('Successfully deleted specific registrations blob');
+      currentBlobPathname = null;
+      return true;
+    }
+    
+    // Otherwise try to find and delete any matching blobs
+    console.log('Looking for registration blobs to delete...');
+    const blobs = await list({ ...blobOptions });
+    const baseFilename = config.blob.filename.replace('.json', '');
+    const regBlobs = blobs.blobs.filter(b => 
+      b.pathname.startsWith(baseFilename) && b.pathname.endsWith('.json')
+    );
+    
+    if (regBlobs.length === 0) {
+      console.log('No registrations blobs found to delete');
+      return true;
+    }
+    
+    console.log(`Found ${regBlobs.length} registration blobs to delete`);
+    
+    // Delete each found blob
+    for (const blob of regBlobs) {
+      console.log(`Deleting blob: ${blob.pathname}`);
+      await del(blob.pathname, { ...blobOptions });
+    }
+    
+    console.log('Successfully deleted all registration blobs');
+    currentBlobPathname = null;
     return true;
   } catch (err) {
     console.error('Error deleting registrations blob:', err);
@@ -272,6 +350,13 @@ function getRegistrationBlobUrl() {
   if (!isBlobMirroringEnabled()) {
     return null;
   }
+  
+  // If we have a current pathname, use that
+  if (currentBlobPathname) {
+    return getBlobUrl(currentBlobPathname);
+  }
+  
+  // Otherwise use the base filename (which will likely 404)
   return getBlobUrl(config.blob.filename);
 }
 
@@ -301,8 +386,14 @@ async function saveTestBlob(filename, data) {
     });
     
     console.log(`Successfully saved test data to Blob storage at: ${blob.url}`);
+    console.log(`Test blob pathname: ${blob.pathname}`);
     
-    return { success: true, url: blob.url, message: 'Successfully saved test data' };
+    return { 
+      success: true, 
+      url: blob.url,
+      pathname: blob.pathname,
+      message: 'Successfully saved test data' 
+    };
   } catch (err) {
     console.error('Error saving test data to Blob storage:', err);
     return { 
@@ -328,8 +419,27 @@ async function getTestBlob(filename) {
   try {
     console.log(`Attempting to fetch test data from Blob storage (${filename})...`);
     
+    // List blobs to find the most recent one matching our pattern
+    const blobs = await list({ ...blobOptions });
+    const baseFilename = filename.replace('.json', '');
+    const matchingBlobs = blobs.blobs.filter(b => 
+      b.pathname.startsWith(baseFilename) && b.pathname.endsWith('.json')
+    );
+    
+    if (matchingBlobs.length === 0) {
+      console.log(`No test blob found matching pattern: ${baseFilename}*.json`);
+      return { success: false, data: null, message: 'Test blob not found' };
+    }
+    
+    // Get the most recent blob
+    const testBlob = matchingBlobs.sort((a, b) => 
+      new Date(b.uploadedAt) - new Date(a.uploadedAt)
+    )[0];
+    
+    console.log(`Found test blob: ${testBlob.pathname}, uploaded: ${testBlob.uploadedAt}`);
+    
     // Get the blob file
-    const blob = await get(filename, { ...blobOptions });
+    const blob = await get(testBlob.pathname, { ...blobOptions });
     
     if (!blob) {
       console.log('Failed to fetch test blob');
