@@ -11,6 +11,18 @@ const { createClient } = require('@vercel/edge-config');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Log available environment variables (without sensitive values)
+console.log('Environment:', {
+  NODE_ENV: process.env.NODE_ENV,
+  VERCEL: process.env.VERCEL,
+  VERCEL_ENV: process.env.VERCEL_ENV,
+  VERCEL_URL: process.env.VERCEL_URL,
+  EDGE_CONFIG: process.env.EDGE_CONFIG ? 'Defined' : 'Undefined',
+  EDGE_CONFIG_ID: process.env.EDGE_CONFIG_ID ? 'Defined' : 'Undefined',
+  EDGE_CONFIG_TOKEN: process.env.EDGE_CONFIG_TOKEN ? 'Defined' : 'Undefined',
+  VERCEL_API_TOKEN: process.env.VERCEL_API_TOKEN ? 'Defined' : 'Undefined',
+});
+
 // Edge Config setup - using environment variables
 const edgeConfigId = process.env.EDGE_CONFIG_ID || 'ecfg_u19oenik3gvnaimrebefbcaoe6dy';
 const edgeConfigToken = process.env.EDGE_CONFIG_TOKEN || '98e90ddb-8e17-49b6-b53b-ebf4677a8a7b';
@@ -24,7 +36,22 @@ let isEdgeConfigAvailable = false;
 let edgeConfigClient = null;
 
 // Configure proper environment variable for the SDK
-process.env.EDGE_CONFIG = `https://edge-config.vercel.com/${edgeConfigId}?token=${edgeConfigToken}`;
+if (!process.env.EDGE_CONFIG) {
+  console.log('EDGE_CONFIG environment variable not found, creating it');
+  process.env.EDGE_CONFIG = `https://edge-config.vercel.com/${edgeConfigId}?token=${edgeConfigToken}`;
+} else {
+  console.log('EDGE_CONFIG environment variable is already defined');
+}
+
+// Additional log for Vercel environment
+if (process.env.VERCEL === '1') {
+  console.log('Running in Vercel environment');
+  
+  // In Vercel production, the Edge Config client should auto-connect
+  if (process.env.VERCEL_ENV === 'production') {
+    console.log('In Vercel production environment, Edge Config should auto-connect');
+  }
+}
 
 // Middleware
 app.use(bodyParser.json());
@@ -337,7 +364,7 @@ async function initializeEdgeConfig() {
 }
 
 // Test if Edge Config is available with multiple attempts
-async function testEdgeConfig(maxAttempts = 3) {
+async function testEdgeConfig(maxAttempts = 5) { // Increased from 3 to 5 attempts
   console.log(`Testing Edge Config connection (max ${maxAttempts} attempts)...`);
   
   // Initialize the SDK client first
@@ -383,7 +410,7 @@ async function testEdgeConfig(maxAttempts = 3) {
       const response = await fetchWithRetry(
         `${edgeConfigUrl}/items?token=${edgeConfigToken}`,
         { method: 'GET' },
-        1  // only 1 retry per attempt
+        2  // Increased from 1 to 2 retries per attempt
       );
       
       if (response.ok) {
@@ -455,35 +482,151 @@ async function testEdgeConfig(maxAttempts = 3) {
 async function initialize() {
   console.log('Initializing application...');
   
-  try {
-    // Test Edge Config availability with multiple attempts
-    const edgeConfigWorking = await testEdgeConfig(3);
-    
-    if (edgeConfigWorking) {
-      console.log('Initialization complete - using Edge Config for persistent storage');
-      return true;
-    } else {
-      console.warn('Edge Config is not available - the application will operate in read-only mode');
-      console.warn('Registration and admin functions will be unavailable until Edge Config connectivity is restored');
-      return false;
+  // Try multiple initialization attempts
+  let attempts = 3;
+  
+  while (attempts > 0) {
+    try {
+      // Test Edge Config availability with multiple attempts
+      const edgeConfigWorking = await testEdgeConfig(5);
+      
+      if (edgeConfigWorking) {
+        console.log('Initialization complete - using Edge Config for persistent storage');
+        
+        // Pre-warm the connection by fetching registrations
+        try {
+          console.log('Pre-warming Edge Config connection by fetching registrations...');
+          const registrations = await getRegistrations();
+          console.log(`Successfully pre-warmed Edge Config with ${registrations.length} registrations`);
+        } catch (warmupError) {
+          console.warn('Pre-warming fetch failed, but will continue with initialization:', warmupError.message);
+          // Still continue as successful since the connection test passed
+        }
+        
+        return true;
+      } else {
+        attempts--;
+        
+        if (attempts === 0) {
+          console.warn('Edge Config is not available after multiple attempts - the application will operate in read-only mode');
+          console.warn('Registration and admin functions will be unavailable until Edge Config connectivity is restored');
+          return false;
+        }
+        
+        console.log(`Edge Config test failed, ${attempts} initialization attempts remaining`);
+        // Wait before retrying
+        const delay = (4 - attempts) * 2000; // Increasing delay between attempts
+        console.log(`Waiting ${delay}ms before next initialization attempt...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    } catch (error) {
+      attempts--;
+      
+      if (attempts === 0) {
+        console.error('Initialization error after multiple attempts:', error);
+        console.warn('Application will operate in limited mode with no registration functionality');
+        return false;
+      }
+      
+      console.log(`Initialization error, ${attempts} attempts remaining:`, error.message);
+      // Wait before retrying
+      const delay = (4 - attempts) * 2000; // Increasing delay between attempts
+      console.log(`Waiting ${delay}ms before next initialization attempt...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
-  } catch (error) {
-    console.error('Initialization warning:', error);
-    console.warn('Application will operate in limited mode with no registration functionality');
-    return false;
   }
+  
+  return false;
 }
 
 // Initialize when server starts - but don't prevent server from starting
 initialize().then(success => {
   if (success) {
     console.log('Application initialized successfully with Edge Config');
+    
+    // Set up a periodic check to keep the Edge Config connection alive
+    const CONNECTIVITY_CHECK_INTERVAL = 10 * 60 * 1000; // 10 minutes
+    console.log(`Setting up periodic connectivity check every ${CONNECTIVITY_CHECK_INTERVAL/60000} minutes`);
+    
+    setInterval(async () => {
+      try {
+        if (isEdgeConfigAvailable) {
+          console.log('Performing periodic Edge Config connectivity check...');
+          
+          // Try to get registrations to validate the connection
+          const registrations = await getRegistrations();
+          console.log(`Connectivity check successful, found ${registrations.length} registrations`);
+        } else {
+          console.log('Edge Config connection lost, attempting to re-initialize...');
+          const reconnected = await testEdgeConfig(3);
+          
+          if (reconnected) {
+            console.log('Successfully re-established Edge Config connection');
+          } else {
+            console.warn('Failed to re-establish Edge Config connection');
+          }
+        }
+      } catch (error) {
+        console.error('Error during periodic connectivity check:', error.message);
+        
+        // Try to reconnect
+        console.log('Attempting to recover Edge Config connection...');
+        try {
+          const reconnected = await testEdgeConfig(3);
+          if (reconnected) {
+            console.log('Successfully recovered Edge Config connection');
+          } else {
+            console.warn('Failed to recover Edge Config connection');
+          }
+        } catch (reconnectError) {
+          console.error('Error during connection recovery:', reconnectError.message);
+        }
+      }
+    }, CONNECTIVITY_CHECK_INTERVAL);
   } else {
     console.warn('Application started in limited mode - some features will be unavailable');
+    
+    // Even if initial startup failed, set a periodic check to try to recover
+    const RECOVERY_ATTEMPT_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    console.log(`Setting up periodic recovery attempts every ${RECOVERY_ATTEMPT_INTERVAL/60000} minutes`);
+    
+    setInterval(async () => {
+      console.log('Attempting to recover Edge Config functionality...');
+      
+      try {
+        const recovered = await initialize();
+        if (recovered) {
+          console.log('Successfully recovered Edge Config functionality!');
+        } else {
+          console.log('Recovery attempt failed, will try again later');
+        }
+      } catch (error) {
+        console.error('Error during recovery attempt:', error.message);
+      }
+    }, RECOVERY_ATTEMPT_INTERVAL);
   }
 }).catch(err => {
   console.error('Initialization error:', err);
   console.warn('Application started in limited mode - some features will be unavailable');
+  
+  // Set up periodic recovery attempts even after initialization error
+  const RECOVERY_ATTEMPT_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  console.log(`Setting up periodic recovery attempts every ${RECOVERY_ATTEMPT_INTERVAL/60000} minutes`);
+  
+  setInterval(async () => {
+    console.log('Attempting to recover from initialization error...');
+    
+    try {
+      const recovered = await initialize();
+      if (recovered) {
+        console.log('Successfully recovered from initialization error!');
+      } else {
+        console.log('Recovery attempt failed, will try again later');
+      }
+    } catch (error) {
+      console.error('Error during recovery attempt:', error.message);
+    }
+  }, RECOVERY_ATTEMPT_INTERVAL);
 });
 
 // Routes
@@ -568,13 +711,33 @@ app.get('/get-passover-registrations', async (req, res) => {
 // Store registration endpoint
 app.post('/store-passover-registration', async (req, res) => {
   try {
-    // Check if Edge Config is available
+    // Check if Edge Config is available, if not, try to initialize it first
     if (!isEdgeConfigAvailable) {
-      console.warn('Rejecting registration attempt: Edge Config is unavailable');
-      return res.status(503).json({
-        success: false,
-        message: 'Registration storage is unavailable - Edge Config is required'
-      });
+      console.warn('Edge Config unavailable on registration attempt - trying to initialize...');
+      try {
+        // Increased to 3 retry attempts with a more descriptive message
+        const edgeConfigWorking = await testEdgeConfig(3);
+        
+        if (!edgeConfigWorking) {
+          console.error('Edge Config initialization failed during registration attempt');
+          return res.status(503).json({
+            success: false,
+            message: 'Our registration system is temporarily unavailable. ' +
+                    'Please try again in a few minutes or contact us directly at YKIEVMAN@BOWERYJEWS.ORG ' +
+                    'with your name, email, and which Seder night(s) you would like to attend.'
+          });
+        } else {
+          console.log('Edge Config successfully initialized during registration attempt');
+          // Edge Config is now available, continue with the registration
+        }
+      } catch (initError) {
+        console.error('Error initializing Edge Config during registration:', initError);
+        return res.status(503).json({
+          success: false,
+          message: 'Our registration system is experiencing technical difficulties. ' +
+                  'Please try again in a few minutes or contact us directly at YKIEVMAN@BOWERYJEWS.ORG.'
+        });
+      }
     }
 
     const registration = req.body;
@@ -583,56 +746,82 @@ app.post('/store-passover-registration', async (req, res) => {
     // Add registration date
     registration.registrationDate = new Date().toISOString();
     
-    // Verify Edge Config availability one more time (could have changed since server start)
+    // Double check Edge Config availability
     if (!isEdgeConfigAvailable) {
-      console.log('Edge Config availability check failed, attempting to initialize...');
+      console.log('Edge Config still unavailable after initialization attempt, trying once more...');
       try {
-        const edgeConfigWorking = await testEdgeConfig(2);
+        const edgeConfigWorking = await testEdgeConfig(3);
         if (!edgeConfigWorking) {
-          console.error('Edge Config is still unavailable after recheck');
+          console.error('Edge Config is still unavailable after multiple initialization attempts');
           return res.status(503).json({
             success: false,
-            message: 'Registration storage is temporarily unavailable. Please try again later.'
+            message: 'Registration storage is temporarily unavailable. Please try again in a few minutes.'
           });
+        } else {
+          console.log('Edge Config successfully initialized on second attempt');
         }
       } catch (recheckError) {
         console.error('Error rechecking Edge Config availability:', recheckError);
         return res.status(503).json({
           success: false,
-          message: 'Registration storage system is experiencing technical difficulties. Please try again later.'
+          message: 'Registration storage system is experiencing technical difficulties. Please try again in a few minutes.'
         });
       }
     }
     
-    // Get current registrations
+    // Get current registrations with retry logic
     let registrations;
-    try {
-      console.log('Retrieving current registrations...');
-      registrations = await getRegistrations();
-      console.log(`Retrieved ${registrations.length} existing registrations`);
-    } catch (getError) {
-      console.error('Error retrieving existing registrations:', getError);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to access registration storage. Please try again later.'
-      });
+    let getAttempts = 3;
+    
+    while (getAttempts > 0) {
+      try {
+        console.log(`Retrieving current registrations (attempt ${4-getAttempts}/3)...`);
+        registrations = await getRegistrations();
+        console.log(`Retrieved ${registrations.length} existing registrations`);
+        break; // Success, exit the loop
+      } catch (getError) {
+        getAttempts--;
+        if (getAttempts === 0) {
+          console.error('Failed to retrieve registrations after multiple attempts:', getError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to access registration storage. Please try again in a few minutes.'
+          });
+        }
+        
+        console.log(`Error retrieving registrations, ${getAttempts} attempts remaining:`, getError.message);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
     
     // Add new registration
     registrations.push(registration);
     console.log(`Adding new registration, total count: ${registrations.length}`);
     
-    // Save to Edge Config
-    try {
-      console.log('Saving updated registrations...');
-      await saveRegistrations(registrations);
-      console.log('Registration saved successfully to Edge Config');
-    } catch (saveError) {
-      console.error('Error saving registration to Edge Config:', saveError);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to save your registration. Please try again or contact our support team.'
-      });
+    // Save to Edge Config with retry logic
+    let saveAttempts = 3;
+    
+    while (saveAttempts > 0) {
+      try {
+        console.log(`Saving updated registrations (attempt ${4-saveAttempts}/3)...`);
+        await saveRegistrations(registrations);
+        console.log('Registration saved successfully to Edge Config');
+        break; // Success, exit the loop
+      } catch (saveError) {
+        saveAttempts--;
+        if (saveAttempts === 0) {
+          console.error('Failed to save registration after multiple attempts:', saveError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to save your registration. Please try again in a few minutes or contact our support team.'
+          });
+        }
+        
+        console.log(`Error saving registration, ${saveAttempts} attempts remaining:`, saveError.message);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
     
     res.json({ 
@@ -644,7 +833,7 @@ app.post('/store-passover-registration', async (req, res) => {
     console.error('Unexpected error storing registration:', error);
     res.status(500).json({ 
       success: false, 
-      message: error.message || 'Failed to store registration'
+      message: 'An unexpected error occurred. Please try again or contact us directly at YKIEVMAN@BOWERYJEWS.ORG.'
     });
   }
 });
