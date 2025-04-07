@@ -4,6 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
+const fs = require('fs');
 
 const registrationService = require('../services/registration');
 const edgeConfig = require('../services/edge-config');
@@ -468,6 +469,31 @@ router.get('/admin/test-edge-config', async (req, res) => {
       failureCount: edgeConfig.getFailureCount ? edgeConfig.getFailureCount() : 0
     };
     
+    // Test network connectivity to Edge Config
+    let networkTest = { success: false, message: 'Not attempted' };
+    try {
+      console.log('Testing basic network connectivity to Edge Config API...');
+      const pingResponse = await fetch(`${config.edgeConfig.url()}`, {
+        method: 'HEAD',
+        timeout: 5000
+      });
+      
+      networkTest = {
+        success: pingResponse.ok || pingResponse.status === 404, // 404 is expected for HEAD request without token
+        status: pingResponse.status,
+        statusText: pingResponse.statusText,
+        message: pingResponse.ok || pingResponse.status === 404 
+          ? 'Network connectivity to Edge Config API is working' 
+          : `Network connectivity issue: ${pingResponse.status} ${pingResponse.statusText}`
+      };
+    } catch (networkError) {
+      networkTest = {
+        success: false,
+        message: `Network connectivity failed: ${networkError.message}`,
+        error: networkError.message
+      };
+    }
+    
     // Try to initialize with extended attempts
     console.log('Attempting to initialize Edge Config...');
     const success = await edgeConfig.testEdgeConfig(5);
@@ -478,6 +504,18 @@ router.get('/admin/test-edge-config', async (req, res) => {
       failureCount: edgeConfig.getFailureCount ? edgeConfig.getFailureCount() : 0
     };
     
+    // Check SDK version
+    let sdkVersion = 'Unknown';
+    try {
+      const packagePath = path.join(__dirname, '..', 'node_modules', '@vercel', 'edge-config', 'package.json');
+      if (fs.existsSync(packagePath)) {
+        const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+        sdkVersion = pkg.version;
+      }
+    } catch (err) {
+      console.error('Error checking SDK version:', err);
+    }
+    
     // Check environment variables
     const envStatus = {
       EDGE_CONFIG: process.env.EDGE_CONFIG ? 'Set' : 'Not set',
@@ -486,7 +524,9 @@ router.get('/admin/test-edge-config', async (req, res) => {
       // Show masked token to verify it's correct without revealing full token
       tokenPreview: process.env.EDGE_CONFIG_TOKEN ? 
         `${process.env.EDGE_CONFIG_TOKEN.substring(0, 4)}...${process.env.EDGE_CONFIG_TOKEN.substring(process.env.EDGE_CONFIG_TOKEN.length - 4)}` : 
-        'N/A'
+        'N/A',
+      EDGE_CONFIG_FULL: process.env.EDGE_CONFIG ? 
+        process.env.EDGE_CONFIG.replace(/token=[^&]+/, 'token=REDACTED') : 'Not set'
     };
     
     // Try to save and get some test data for verification
@@ -535,17 +575,58 @@ router.get('/admin/test-edge-config', async (req, res) => {
       }
     }
     
+    // Check if the edge config can be verified independently
+    let verificationTest = { success: false, message: 'Not attempted' };
+    try {
+      console.log('Verifying Edge Config via direct API call...');
+      const response = await fetchWithRetry(
+        `${config.edgeConfig.url()}/items?token=${config.edgeConfig.token}`,
+        { 
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        }
+      );
+      
+      verificationTest = {
+        success: response.ok,
+        status: response.status,
+        message: response.ok 
+          ? 'Successfully verified Edge Config via direct API call' 
+          : `API verification failed with status ${response.status}`
+      };
+      
+      if (response.ok) {
+        const items = await response.json();
+        verificationTest.itemCount = items.items ? items.items.length : 0;
+      }
+    } catch (verifyError) {
+      verificationTest = {
+        success: false,
+        message: 'Verification failed: ' + verifyError.message
+      };
+    }
+    
     res.json({
       timestamp: new Date().toISOString(),
       initializationSuccess: success,
       initialStatus,
       currentStatus,
+      networkTest,
+      sdkVersion,
       environment: envStatus,
       readWriteTest,
+      verificationTest,
       connectionString: config.edgeConfig.connectionString().replace(/token=[^&]+/, 'token=REDACTED'),
       config: {
         id: config.edgeConfig.id,
         url: config.edgeConfig.url()
+      },
+      runningEnvironment: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        isVercel: !!process.env.VERCEL,
+        vercelEnv: process.env.VERCEL_ENV || 'Not set',
+        isDevelopment: process.env.NODE_ENV === 'development'
       }
     });
   } catch (error) {
@@ -582,6 +663,43 @@ router.get('/admin/test-blob-storage', async (req, res) => {
       });
     }
     
+    // Check Vercel Blob package version
+    let packageVersion = 'Unknown';
+    try {
+      const packagePath = path.join(__dirname, '..', 'node_modules', '@vercel', 'blob', 'package.json');
+      if (fs.existsSync(packagePath)) {
+        const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+        packageVersion = pkg.version;
+      }
+    } catch (err) {
+      console.error('Error checking Blob package version:', err);
+    }
+    
+    // Test network connectivity to Blob storage
+    let networkTest = { success: false, message: 'Not attempted' };
+    try {
+      console.log('Testing basic network connectivity to Blob API...');
+      const pingResponse = await fetch(config.blob.baseUrl, {
+        method: 'HEAD',
+        timeout: 5000
+      });
+      
+      networkTest = {
+        success: pingResponse.ok || pingResponse.status === 404, // 404 is expected for HEAD request
+        status: pingResponse.status,
+        statusText: pingResponse.statusText,
+        message: pingResponse.ok || pingResponse.status === 404 
+          ? 'Network connectivity to Blob storage is working' 
+          : `Network connectivity issue: ${pingResponse.status} ${pingResponse.statusText}`
+      };
+    } catch (networkError) {
+      networkTest = {
+        success: false,
+        message: `Network connectivity failed: ${networkError.message}`,
+        error: networkError.message
+      };
+    }
+    
     // Test blob write
     const testData = {
       test: true,
@@ -600,23 +718,28 @@ router.get('/admin/test-blob-storage', async (req, res) => {
       try {
         const testBlob = await blobStorage.getTestBlob('test-connectivity.json');
         
-        if (testBlob.success && testBlob.data.timestamp === testData.timestamp) {
+        if (testBlob.success && testBlob.data && testBlob.data.timestamp === testData.timestamp) {
           readResult = {
             success: true, 
             message: 'Successfully read test data',
             data: testBlob.data
           };
         } else {
+          // Add additional diagnostics for data mismatch
           readResult = {
             success: false,
-            message: 'Blob retrieval succeeded but data did not match',
-            data: testBlob.data
+            message: 'Blob retrieval succeeded but data did not match expected values',
+            expectedTimestamp: testData.timestamp,
+            receivedData: testBlob.data,
+            dataPresent: !!testBlob.data,
+            rawData: testBlob.rawData || 'Not available'
           };
         }
       } catch (readError) {
         readResult = {
           success: false,
-          message: 'Failed to read test blob: ' + readError.message
+          message: 'Failed to read test blob: ' + readError.message,
+          error: readError.stack ? readError.stack.split('\n')[0] : readError.message
         };
       }
     }
@@ -634,6 +757,29 @@ router.get('/admin/test-blob-storage', async (req, res) => {
           size: mainBlob.size,
           uploadedAt: mainBlob.uploadedAt
         };
+        
+        // Try to fetch the actual content to verify it's accessible
+        try {
+          const registrationsContent = await fetch(registrationsBlob.url);
+          if (registrationsContent.ok) {
+            const contentSample = await registrationsContent.text();
+            registrationsBlob.contentSample = contentSample.substring(0, 100) + '...';
+            registrationsBlob.contentLength = contentSample.length;
+            registrationsBlob.isValidJson = true;
+            
+            try {
+              JSON.parse(contentSample);
+            } catch (jsonError) {
+              registrationsBlob.isValidJson = false;
+            }
+          } else {
+            registrationsBlob.contentAccessible = false;
+            registrationsBlob.contentError = `HTTP ${registrationsContent.status}: ${registrationsContent.statusText}`;
+          }
+        } catch (contentError) {
+          registrationsBlob.contentAccessible = false;
+          registrationsBlob.contentError = contentError.message;
+        }
       }
     } catch (listError) {
       registrationsBlob = {
@@ -646,6 +792,8 @@ router.get('/admin/test-blob-storage', async (req, res) => {
     res.json({
       timestamp: new Date().toISOString(),
       enabled: true,
+      packageVersion,
+      networkTest,
       writeTest: writeResult,
       readTest: readResult,
       registrationsBlob,
@@ -656,6 +804,12 @@ router.get('/admin/test-blob-storage', async (req, res) => {
         contentType: config.blob.contentType,
         accessMode: config.blob.accessMode,
         syncInterval: config.blob.syncInterval
+      },
+      runningEnvironment: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        isVercel: !!process.env.VERCEL,
+        vercelEnv: process.env.VERCEL_ENV || 'Not set'
       }
     });
   } catch (error) {
@@ -664,6 +818,232 @@ router.get('/admin/test-blob-storage', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to test Blob storage: ' + error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * Fix blob data format issues - workaround for potential encoding problems
+ */
+router.post('/admin/fix-blob-data', async (req, res) => {
+  try {
+    if (!blobStorage.isBlobMirroringEnabled()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Blob mirroring is not enabled in configuration'
+      });
+    }
+    
+    console.log('Attempting to fix blob data format issues...');
+    
+    // First get local registrations data as our source of truth
+    const localRegistrations = await edgeConfig.getRegistrationsFromLocalStorage();
+    
+    if (!localRegistrations || localRegistrations.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No local registrations found to use for fixing blob data'
+      });
+    }
+    
+    // Force re-save to blob storage with proper encoding
+    console.log(`Re-saving ${localRegistrations.length} registrations to blob with proper encoding...`);
+    const saveResult = await blobStorage.saveRegistrationsToBlob(localRegistrations);
+    
+    if (!saveResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to save registrations to blob storage',
+        error: saveResult.error || 'Unknown error'
+      });
+    }
+    
+    // Verify the save was successful by reading it back
+    console.log('Verifying blob data after fix...');
+    const verifyResult = await blobStorage.getRegistrationsFromBlob();
+    
+    if (!verifyResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Saved data to blob but verification failed',
+        saveResult,
+        verifyError: verifyResult.error || 'Unknown error'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: `Successfully fixed blob data format for ${localRegistrations.length} registrations`,
+      registrations: {
+        count: verifyResult.data.length,
+        blobUrl: blobStorage.getRegistrationBlobUrl(),
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error fixing blob data:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fix blob data: ' + error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * Test Edge Config authentication
+ */
+router.get('/admin/test-edge-config-auth', async (req, res) => {
+  try {
+    console.log('Testing Edge Config authentication specifically...');
+    
+    // First check if we can do an unauthenticated ping to verify network access
+    let networkTest = { success: false, message: 'Not attempted' };
+    try {
+      console.log('Checking basic network connectivity to Edge Config API...');
+      const pingResponse = await fetch(`${config.edgeConfig.url()}`, {
+        method: 'HEAD',
+        timeout: 5000
+      });
+      
+      networkTest = {
+        success: pingResponse.ok || pingResponse.status === 404, // 404 is expected for HEAD request without token
+        status: pingResponse.status,
+        statusText: pingResponse.statusText,
+        message: pingResponse.ok || pingResponse.status === 404 
+          ? 'Network connectivity to Edge Config API is working' 
+          : `Network connectivity issue: ${pingResponse.status} ${pingResponse.statusText}`
+      };
+    } catch (networkError) {
+      networkTest = {
+        success: false,
+        message: `Network connectivity failed: ${networkError.message}`,
+        error: networkError.message
+      };
+    }
+    
+    if (!networkTest.success) {
+      return res.json({
+        success: false,
+        message: 'Cannot test authentication because network connectivity failed',
+        networkTest
+      });
+    }
+    
+    // Now test the auth token specifically
+    let authTest = { success: false, message: 'Not attempted' };
+    try {
+      console.log('Testing Edge Config authentication with current token...');
+      
+      // Make a direct API call with the auth token
+      const response = await fetch(`${config.edgeConfig.url()}/items?token=${config.edgeConfig.token}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (response.ok) {
+        authTest = {
+          success: true,
+          status: response.status,
+          message: 'Authentication successful!'
+        };
+        
+        // Also get the item count
+        const data = await response.json();
+        authTest.items = data.items ? data.items.length : 0;
+      } else if (response.status === 401 || response.status === 403) {
+        authTest = {
+          success: false,
+          status: response.status,
+          message: 'Authentication failed. Invalid token or insufficient permissions.'
+        };
+      } else {
+        authTest = {
+          success: false,
+          status: response.status,
+          message: `Unexpected response: ${response.status} ${response.statusText}`
+        };
+      }
+    } catch (authError) {
+      authTest = {
+        success: false,
+        message: 'Authentication test failed: ' + authError.message,
+        error: authError.stack ? authError.stack.split('\n')[0] : authError.message
+      };
+    }
+    
+    // Check if Edge Config ID is valid by testing different endpoints
+    let configIdTest = { success: false, message: 'Not attempted' };
+    try {
+      console.log('Verifying if Edge Config ID exists...');
+      
+      // Check authentication header method as an alternative
+      const response = await fetch(`https://api.vercel.com/v1/edge-config/${config.edgeConfig.id}/items`, {
+        method: 'GET',
+        headers: { 
+          'Authorization': `Bearer ${config.vercel.apiToken}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        configIdTest = {
+          success: true,
+          status: response.status,
+          message: 'Edge Config ID exists and is accessible via Vercel API'
+        };
+        
+        // Also get the item count
+        const data = await response.json();
+        configIdTest.items = data.items ? data.items.length : 0;
+      } else if (response.status === 404) {
+        configIdTest = {
+          success: false,
+          status: response.status,
+          message: 'Edge Config ID not found. This ID may not exist or has been deleted.'
+        };
+      } else {
+        configIdTest = {
+          success: false,
+          status: response.status,
+          message: `Unexpected response: ${response.status} ${response.statusText}`
+        };
+      }
+    } catch (configIdError) {
+      configIdTest = {
+        success: false,
+        message: 'Edge Config ID test failed: ' + configIdError.message,
+        error: configIdError.stack ? configIdError.stack.split('\n')[0] : configIdError.message
+      };
+    }
+    
+    // Return detailed diagnostics
+    res.json({
+      timestamp: new Date().toISOString(),
+      networkTest,
+      authTest,
+      configIdTest,
+      edgeConfig: {
+        id: config.edgeConfig.id,
+        tokenPrefix: config.edgeConfig.token ? 
+          `${config.edgeConfig.token.substring(0, 4)}...${config.edgeConfig.token.substring(config.edgeConfig.token.length - 4)}` :
+          'Not set',
+        url: config.edgeConfig.url()
+      },
+      vercel: {
+        apiTokenPrefix: config.vercel.apiToken ?
+          `${config.vercel.apiToken.substring(0, 4)}...` :
+          'Not set'
+      }
+    });
+  } catch (error) {
+    console.error('Error testing Edge Config authentication:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test Edge Config authentication: ' + error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }

@@ -49,38 +49,119 @@ function initEdgeConfigClient() {
     if (!edgeConfigClient) {
       console.log('Initializing Edge Config client...');
       
+      // Check if required environment variables are set
+      if (!config.edgeConfig.id || !config.edgeConfig.token) {
+        console.error('Missing Edge Config credentials:',
+                     { 
+                       'id': config.edgeConfig.id ? 'Set' : 'Missing',
+                       'token': config.edgeConfig.token ? 'Set' : 'Missing'
+                     });
+        return false;
+      }
+      
+      // Log connection details (without revealing full token)
+      console.log('Edge Config connection details:', {
+        id: config.edgeConfig.id,
+        tokenPrefix: config.edgeConfig.token.substring(0, 4) + '...',
+        connectionString: config.edgeConfig.connectionString().replace(/token=[^&]+/, 'token=REDACTED')
+      });
+      
       try {
         // First attempt: Using the connection string from env variable
+        console.log('Attempting to initialize with EDGE_CONFIG environment variable...');
+        if (!process.env.EDGE_CONFIG) {
+          console.log('EDGE_CONFIG environment variable is not set, setting it now');
+          process.env.EDGE_CONFIG = config.edgeConfig.connectionString();
+        }
+        
         edgeConfigClient = createClient();
         console.log('Edge Config client initialized using environment variable');
         return true;
       } catch (envError) {
         console.log('Failed to initialize with environment variable:', envError.message);
+        console.log('SDK Error details:', {
+          name: envError.name,
+          message: envError.message,
+          stack: envError.stack ? envError.stack.split('\n')[0] : 'No stack trace'
+        });
         
         try {
           // Second attempt: Using direct parameters
+          console.log('Attempting to initialize with direct parameters...');
           edgeConfigClient = createClient(config.edgeConfig.id, { token: config.edgeConfig.token });
           console.log('Edge Config client initialized using direct parameters');
           return true;
         } catch (directError) {
           console.log('Failed to initialize with direct parameters:', directError.message);
+          console.log('SDK Error details:', {
+            name: directError.name,
+            message: directError.message,
+            stack: directError.stack ? directError.stack.split('\n')[0] : 'No stack trace'
+          });
           
           // Third attempt: Using a different parameter format
           try {
-            edgeConfigClient = createClient({ connectionString: config.edgeConfig.connectionString() });
+            console.log('Attempting to initialize with connection string object...');
+            const connectionString = config.edgeConfig.connectionString();
+            console.log('Using connection string (redacted):', 
+                      connectionString.replace(/token=[^&]+/, 'token=REDACTED'));
+                      
+            edgeConfigClient = createClient({ connectionString });
             console.log('Edge Config client initialized using connection string object');
             return true;
           } catch (connectionStringError) {
             console.error('All SDK initialization attempts failed:', connectionStringError.message);
-            edgeConfigClient = null;
-            return false;
+            console.log('SDK Error details:', {
+              name: connectionStringError.name,
+              message: connectionStringError.message,
+              stack: connectionStringError.stack ? connectionStringError.stack.split('\n')[0] : 'No stack trace'
+            });
+            
+            // Final attempt: Manually create a minimal client for API calls
+            console.log('Creating a minimal client for API calls only...');
+            edgeConfigClient = {
+              get: async (key) => {
+                console.log(`Manual API call to get key: ${key}`);
+                const response = await fetchWithRetry(
+                  `${config.edgeConfig.url()}/item/${key}?token=${config.edgeConfig.token}`,
+                  { method: 'GET', headers: { 'Accept': 'application/json' } }
+                );
+                
+                if (!response.ok) {
+                  if (response.status === 404) return null;
+                  throw new Error(`API error: ${response.status}`);
+                }
+                
+                return response.json();
+              },
+              set: async (key, value) => {
+                console.log(`Manual API call to set key: ${key}`);
+                const response = await fetchWithRetry(
+                  `${config.edgeConfig.url()}/items?token=${config.edgeConfig.token}`,
+                  {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      items: [{ operation: 'upsert', key, value }]
+                    })
+                  }
+                );
+                
+                if (!response.ok) {
+                  throw new Error(`API error: ${response.status}`);
+                }
+              }
+            };
+            
+            console.log('Created minimal API-based client');
+            return true;
           }
         }
       }
     }
     return edgeConfigClient !== null;
   } catch (err) {
-    console.error('Failed to initialize Edge Config client:', err);
+    console.error('Unhandled error in Edge Config client initialization:', err);
     edgeConfigClient = null;
     return false;
   }

@@ -280,11 +280,38 @@ async function getTestBlob(filename) {
     }
     
     // Download and parse JSON
-    const response = await fetch(blob.url);
-    const data = await response.json();
-    
-    console.log('Successfully fetched test data from Blob storage');
-    return { success: true, data, message: 'Successfully retrieved test data' };
+    try {
+      console.log(`Downloading blob from URL: ${blob.url}`);
+      const response = await fetch(blob.url);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download blob: ${response.status} ${response.statusText}`);
+      }
+      
+      const text = await response.text();
+      console.log(`Received blob content (first 100 chars): ${text.substring(0, 100)}...`);
+      
+      try {
+        const data = JSON.parse(text);
+        console.log('Successfully parsed blob data:', data);
+        return { success: true, data, message: 'Successfully retrieved test data' };
+      } catch (parseError) {
+        console.error('Error parsing blob JSON:', parseError);
+        return { 
+          success: false, 
+          data: null,
+          rawData: text.length > 100 ? text.substring(0, 100) + '...' : text,
+          message: 'Error parsing blob data: ' + parseError.message
+        };
+      }
+    } catch (fetchError) {
+      console.error('Error fetching blob content:', fetchError);
+      return { 
+        success: false, 
+        data: null, 
+        message: 'Error fetching blob content: ' + fetchError.message
+      };
+    }
   } catch (err) {
     console.error('Error fetching test data from Blob storage:', err);
     return { 
