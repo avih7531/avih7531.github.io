@@ -524,9 +524,19 @@
         reg.sederNight2 === 'on' || reg.sederNight2 === true || reg.sederNight2 === 'yes'
       ).length;
       
+      // Ensure registrations have donation fields and calculate total with proper number handling
       const totalDonationsSum = registrations
-        .filter(reg => reg.hasDonated)
-        .reduce((sum, reg) => sum + (parseFloat(reg.donationAmount) || 0), 0);
+        .filter(reg => reg.hasDonated === true)
+        .reduce((sum, reg) => {
+          // Handle various formats and ensure it's a valid number
+          let amount = 0;
+          if (reg.donationAmount) {
+            // Remove any non-numeric characters except decimal point
+            const cleanAmount = String(reg.donationAmount).replace(/[^0-9.]/g, '');
+            amount = parseFloat(cleanAmount) || 0;
+          }
+          return sum + amount;
+        }, 0);
       
       document.getElementById('totalRegistrations').textContent = totalRegistrations;
       document.getElementById('firstNightCount').textContent = firstNightCount;
@@ -564,6 +574,16 @@
         const isFirstNight = reg.sederNight1 === 'on' || reg.sederNight1 === true || reg.sederNight1 === 'yes';
         const isSecondNight = reg.sederNight2 === 'on' || reg.sederNight2 === true || reg.sederNight2 === 'yes';
         
+        // Ensure donation fields exist and handle properly
+        const hasDonated = reg.hasDonated === true;
+        let donationAmount = 0;
+        
+        if (hasDonated && reg.donationAmount) {
+          // Handle various formats and ensure it's a valid number
+          const cleanAmount = String(reg.donationAmount).replace(/[^0-9.]/g, '');
+          donationAmount = parseFloat(cleanAmount) || 0;
+        }
+        
         // Build row
         row.innerHTML = `
           <td>${reg.registrationId || 'N/A'}</td>
@@ -571,8 +591,8 @@
           <td>${reg.email || 'N/A'}</td>
           <td>${isFirstNight ? '✓' : '✗'}</td>
           <td>${isSecondNight ? '✓' : '✗'}</td>
-          <td class="${reg.hasDonated ? 'donation-yes' : 'donation-no'}">${reg.hasDonated ? 'Yes' : 'No'}</td>
-          <td>${reg.hasDonated ? '$' + (parseFloat(reg.donationAmount) || 0).toFixed(2) : '-'}</td>
+          <td class="${hasDonated ? 'donation-yes' : 'donation-no'}">${hasDonated ? 'Yes' : 'No'}</td>
+          <td>${hasDonated ? '$' + donationAmount.toFixed(2) : '-'}</td>
           <td>${formattedDate}</td>
           <td>
             <button class="delete-btn" data-id="${reg.registrationId || reg.registration_id}">
@@ -611,10 +631,10 @@
         else if (nightFilter === 'night2') nightMatch = !isFirstNight && isSecondNight;
         else if (nightFilter === 'both') nightMatch = isFirstNight && isSecondNight;
         
-        // Donation filter
+        // Donation filter - ensure the field exists
         let donationMatch = true;
-        if (donationFilter === 'donated') donationMatch = reg.hasDonated;
-        else if (donationFilter === 'no-donation') donationMatch = !reg.hasDonated;
+        if (donationFilter === 'donated') donationMatch = reg.hasDonated === true;
+        else if (donationFilter === 'no-donation') donationMatch = reg.hasDonated !== true;
         
         return searchMatch && nightMatch && donationMatch;
       });

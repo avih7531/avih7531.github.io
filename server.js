@@ -148,7 +148,20 @@ async function getRegistrationsFromEdgeConfig() {
           console.log('No passover_registrations found in Edge Config via SDK, returning empty array');
           return [];
         }
-        return Array.isArray(data) ? data : [];
+        
+        // Add default donation fields to registrations that don't have them
+        const normalizedData = Array.isArray(data) ? data.map(reg => {
+          // Ensure each registration has donation fields
+          if (reg.hasDonated === undefined) {
+            reg.hasDonated = false;
+          }
+          if (reg.donationAmount === undefined) {
+            reg.donationAmount = "0.00";
+          }
+          return reg;
+        }) : [];
+        
+        return normalizedData;
       } catch (sdkError) {
         console.log('SDK method failed, falling back to direct API call:', sdkError.message);
         // Fall through to direct API call
@@ -177,7 +190,20 @@ async function getRegistrationsFromEdgeConfig() {
     }
     
     const data = await response.json();
-    return Array.isArray(data) ? data : [];
+    
+    // Add default donation fields to registrations that don't have them
+    const normalizedData = Array.isArray(data) ? data.map(reg => {
+      // Ensure each registration has donation fields
+      if (reg.hasDonated === undefined) {
+        reg.hasDonated = false;
+      }
+      if (reg.donationAmount === undefined) {
+        reg.donationAmount = "0.00";
+      }
+      return reg;
+    }) : [];
+    
+    return normalizedData;
   } catch (err) {
     console.log('Edge Config fetch error:', err.message);
     throw new Error('Unable to fetch data from Edge Config');
@@ -381,6 +407,123 @@ async function initializeEdgeConfig() {
   }
 }
 
+// Function to ensure all registrations have donation fields
+async function migrateRegistrationsWithDonationFields() {
+  console.log('Starting migration to ensure all registrations have donation fields...');
+  
+  try {
+    // Get all registrations
+    let registrations;
+    
+    // Try using the SDK client first
+    if (edgeConfigClient) {
+      try {
+        const data = await edgeConfigClient.get('passover_registrations');
+        if (data === null || data === undefined) {
+          console.log('No registrations to migrate');
+          return true;
+        }
+        registrations = Array.isArray(data) ? data : [];
+      } catch (sdkError) {
+        console.warn('SDK failed when getting registrations for migration:', sdkError.message);
+        
+        // Fallback to API
+        const response = await fetchWithRetry(
+          `${edgeConfigUrl}/item/passover_registrations?token=${edgeConfigToken}`,
+          { method: 'GET' }
+        );
+        
+        if (!response.ok) {
+          if (response.status === 404) {
+            console.log('No registrations to migrate');
+            return true;
+          }
+          throw new Error(`API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        registrations = Array.isArray(data) ? data : [];
+      }
+    }
+    
+    console.log(`Found ${registrations.length} registrations to check for migration`);
+    
+    // Track if any registrations need updating
+    let needsMigration = false;
+    
+    // Update any registrations missing donation fields
+    registrations.forEach(reg => {
+      let updated = false;
+      
+      if (reg.hasDonated === undefined) {
+        reg.hasDonated = false;
+        updated = true;
+      }
+      
+      if (reg.donationAmount === undefined) {
+        reg.donationAmount = "0.00";
+        updated = true;
+      }
+      
+      if (updated) {
+        needsMigration = true;
+      }
+    });
+    
+    // If any registrations were updated, save them back
+    if (needsMigration) {
+      console.log('Migrating registrations with donation fields...');
+      
+      // Try SDK first
+      if (edgeConfigClient) {
+        try {
+          await edgeConfigClient.set('passover_registrations', registrations);
+          console.log('Successfully migrated registrations using SDK');
+          return true;
+        } catch (saveError) {
+          console.warn('SDK failed to save migrated registrations:', saveError.message);
+          // Fall through to API method
+        }
+      }
+      
+      // Fallback to API
+      const vercelApiToken = process.env.VERCEL_API_TOKEN || VERCEL_API_TOKEN;
+      
+      const updateResponse = await fetchWithRetry(
+        `https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${vercelApiToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            items: [{
+              operation: 'upsert',
+              key: 'passover_registrations',
+              value: registrations
+            }]
+          })
+        }
+      );
+      
+      if (updateResponse.ok) {
+        console.log('Successfully migrated registrations using API');
+        return true;
+      } else {
+        console.error('Failed to migrate registrations:', updateResponse.status);
+        return false;
+      }
+    } else {
+      console.log('No registrations need migration, all have donation fields');
+      return true;
+    }
+  } catch (error) {
+    console.error('Error during registration migration:', error);
+    return false;
+  }
+}
+
 // Test if Edge Config is available with multiple attempts
 async function testEdgeConfig(maxAttempts = 5) { // Increased from 3 to 5 attempts
   console.log(`Testing Edge Config connection (max ${maxAttempts} attempts)...`);
@@ -516,6 +659,19 @@ async function initialize() {
           console.log('Pre-warming Edge Config connection by fetching registrations...');
           const registrations = await getRegistrations();
           console.log(`Successfully pre-warmed Edge Config with ${registrations.length} registrations`);
+          
+          // Run migration to add donation fields to any registrations missing them
+          try {
+            console.log('Starting migration to add donation fields to registrations...');
+            const migrationResult = await migrateRegistrationsWithDonationFields();
+            if (migrationResult) {
+              console.log('Successfully migrated registrations with donation fields');
+            } else {
+              console.warn('Migration partially failed, but will continue with initialization');
+            }
+          } catch (migrationError) {
+            console.warn('Error during donation fields migration, but will continue:', migrationError.message);
+          }
         } catch (warmupError) {
           console.warn('Pre-warming fetch failed, but will continue with initialization:', warmupError.message);
           // Still continue as successful since the connection test passed
@@ -864,6 +1020,10 @@ app.post('/store-passover-registration', async (req, res) => {
     
     // Add registration date
     registration.registrationDate = new Date().toISOString();
+    
+    // Initialize donation fields
+    registration.hasDonated = false;
+    registration.donationAmount = "0.00";
     
     // Double check Edge Config availability
     if (!isEdgeConfigAvailable) {
@@ -1249,30 +1409,92 @@ app.post('/update-registration-donation', async (req, res) => {
     
     const { registrationId, donationAmount, stripeSessionId } = req.body;
     
-    // Get current registrations
-    let registrations = await getRegistrations();
+    if (!registrationId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Registration ID is required' 
+      });
+    }
+    
+    // Get current registrations with retry
+    let registrations;
+    let getAttempts = 3;
+    
+    while (getAttempts > 0) {
+      try {
+        console.log(`Retrieving registrations for donation update (attempt ${4-getAttempts}/3)...`);
+        registrations = await getRegistrations();
+        console.log(`Retrieved ${registrations.length} registrations to update donation`);
+        break; // Success, exit the loop
+      } catch (getError) {
+        getAttempts--;
+        if (getAttempts === 0) {
+          console.error('Failed to retrieve registrations for donation update after multiple attempts:', getError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to access registration data. Please try again in a few minutes.'
+          });
+        }
+        
+        console.log(`Error retrieving registrations for donation update, ${getAttempts} attempts remaining:`, getError.message);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
     
     // Find and update the registration
     const registrationIndex = registrations.findIndex(reg => reg.registrationId === registrationId);
     
     if (registrationIndex !== -1) {
-      // Update the registration
+      // Update the registration with proper field types
       registrations[registrationIndex].hasDonated = true;
-      registrations[registrationIndex].donationAmount = donationAmount;
-      registrations[registrationIndex].stripeSessionId = stripeSessionId;
+      registrations[registrationIndex].donationAmount = parseFloat(donationAmount).toFixed(2);
+      registrations[registrationIndex].stripeSessionId = stripeSessionId || null;
       registrations[registrationIndex].donationDate = new Date().toISOString();
       
-      // Save back to storage
-      await saveRegistrations(registrations);
+      // Save back to storage with retry
+      let saveAttempts = 3;
       
-      console.log('Updated registration with donation:', registrationId);
-      res.json({ success: true, message: 'Registration updated with donation info' });
+      while (saveAttempts > 0) {
+        try {
+          console.log(`Saving registration with donation update (attempt ${4-saveAttempts}/3)...`);
+          await saveRegistrations(registrations);
+          console.log('Updated registration with donation info:', registrationId);
+          break; // Success, exit the loop
+        } catch (saveError) {
+          saveAttempts--;
+          if (saveAttempts === 0) {
+            console.error('Failed to save donation update after multiple attempts:', saveError);
+            return res.status(500).json({
+              success: false,
+              message: 'Failed to save donation information. Please try again in a few minutes.'
+            });
+          }
+          
+          console.log(`Error saving donation update, ${saveAttempts} attempts remaining:`, saveError.message);
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      return res.json({ 
+        success: true, 
+        message: 'Registration updated with donation info',
+        donationAmount: registrations[registrationIndex].donationAmount
+      });
     } else {
-      res.status(404).json({ success: false, message: 'Registration not found' });
+      console.warn(`Registration not found for donation update: ${registrationId}`);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Registration not found' 
+      });
     }
   } catch (error) {
-    console.error('Error updating registration:', error);
-    res.status(500).json({ success: false, message: 'Failed to update registration' });
+    console.error('Error updating registration with donation:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update registration with donation: ' + error.message 
+    });
   }
 });
 
