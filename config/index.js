@@ -21,6 +21,18 @@ const config = {
     }
   },
   
+  // Vercel Blob storage settings
+  blob: {
+    enabled: process.env.BLOB_MIRROR_ENABLED === '1' || false,
+    storeId: process.env.BLOB_STORE_ID || 'store_5G8YAnelpqAcRsbj',
+    baseUrl: process.env.BLOB_BASE_URL || 'https://5g8yanelpqacrsbj.public.blob.vercel-storage.com',
+    token: process.env.BLOB_READ_WRITE_TOKEN || 'vercel_blob_rw_5G8YAnelpqAcRsbj_GFs9WgSFvELbVTW2QjBzHiNTzEYqHn',
+    filename: 'passover-registrations.json',
+    contentType: 'application/json',
+    accessMode: 'public', // or 'private' if you prefer
+    syncInterval: parseInt(process.env.BLOB_SYNC_INTERVAL_MINUTES || '60', 10), // sync interval in minutes
+  },
+  
   // Stripe settings
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY || 'sk_test_default_key_for_development_only',
@@ -30,7 +42,13 @@ const config = {
   // Vercel API settings
   vercel: {
     apiToken: process.env.VERCEL_API_TOKEN || 'zK6O71OhkWKKeCqq3X9NHW8S'
-  }
+  },
+  
+  // Edge Config settings
+  edge: {
+    token: process.env.EDGE_CONFIG_TOKEN || '',
+    failureThreshold: parseInt(process.env.EDGE_CONFIG_FAILURE_THRESHOLD, 10) || 3,
+  },
 };
 
 // Ensure EDGE_CONFIG environment variable is set for the SDK
@@ -48,6 +66,9 @@ console.log('Environment configuration:', {
   EDGE_CONFIG_ID: config.edgeConfig.id ? 'Defined' : 'Undefined',
   EDGE_CONFIG_TOKEN: config.edgeConfig.token ? 'Defined' : 'Undefined',
   VERCEL_API_TOKEN: config.vercel.apiToken ? 'Defined' : 'Undefined',
+  BLOB_MIRROR_ENABLED: config.blob.enabled ? 'Yes' : 'No',
+  BLOB_STORE_ID: config.blob.storeId ? 'Defined' : 'Undefined',
+  BLOB_TOKEN: config.blob.token ? 'Defined' : 'Undefined'
 });
 
 module.exports = config; 

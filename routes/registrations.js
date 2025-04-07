@@ -3,9 +3,12 @@
  */
 const express = require('express');
 const router = express.Router();
+const path = require('path');
 
 const registrationService = require('../services/registration');
 const edgeConfig = require('../services/edge-config');
+const blobStorage = require('../services/blob-storage');
+const config = require('../config');
 
 /**
  * Store a new Passover registration
@@ -276,6 +279,178 @@ router.get('/admin/registrations', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve admin registrations: ' + error.message
+    });
+  }
+});
+
+/**
+ * Force sync between Edge Config and Blob storage
+ */
+router.post('/admin/sync-to-blob', async (req, res) => {
+  try {
+    if (!blobStorage.isBlobMirroringEnabled()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Blob mirroring is not enabled in configuration'
+      });
+    }
+
+    console.log('Requested manual sync to blob storage');
+    
+    // Get all registrations
+    const registrations = await registrationService.getAllRegistrations();
+    
+    // Sync to blob
+    const syncResult = await blobStorage.syncRegistrationsToBlob(registrations, true);
+    
+    if (syncResult) {
+      res.json({
+        success: true,
+        message: `Successfully synced ${registrations.length} registrations to blob storage`
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to sync registrations to blob storage'
+      });
+    }
+  } catch (error) {
+    console.error('Error syncing to blob storage:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync: ' + error.message
+    });
+  }
+});
+
+/**
+ * Get blob storage status
+ */
+router.get('/admin/blob-status', async (req, res) => {
+  try {
+    // First check Edge Config status
+    const isEdgeConfigWorking = edgeConfig.isEdgeConfigAvailable();
+    const edgeFailures = edgeConfig.getFailureCount ? edgeConfig.getFailureCount() : 'Unknown';
+    const usingBlobAsPrimary = edgeFailures >= 3; // Threshold
+    
+    if (!blobStorage.isBlobMirroringEnabled()) {
+      return res.json({
+        success: true,
+        enabled: false,
+        message: 'Blob mirroring is not enabled',
+        edgeConfig: {
+          available: isEdgeConfigWorking,
+          failureCount: edgeFailures,
+          isPrimary: !usingBlobAsPrimary
+        }
+      });
+    }
+
+    // Check if blob exists
+    const blobResult = await blobStorage.getRegistrationsFromBlob();
+    const blobUrl = blobStorage.getRegistrationBlobUrl();
+    
+    res.json({
+      success: true,
+      enabled: true,
+      hasMirror: blobResult.success,
+      registrationCount: blobResult.success ? blobResult.data.length : 0,
+      syncInterval: config.blob.syncInterval,
+      accessMode: config.blob.accessMode,
+      storeId: config.blob.storeId,
+      directUrl: blobUrl,
+      filename: config.blob.filename,
+      hasToken: !!config.blob.token,
+      isPrimary: usingBlobAsPrimary,
+      edgeConfig: {
+        available: isEdgeConfigWorking,
+        failureCount: edgeFailures,
+        isPrimary: !usingBlobAsPrimary
+      }
+    });
+  } catch (error) {
+    console.error('Error checking blob status:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check blob status: ' + error.message
+    });
+  }
+});
+
+/**
+ * Get system health status
+ */
+router.get('/admin/health', async (req, res) => {
+  try {
+    // Check Edge Config status
+    const isEdgeConfigAvailable = edgeConfig.isEdgeConfigAvailable();
+    const edgeFailures = edgeConfig.getFailureCount ? edgeConfig.getFailureCount() : 'Unknown';
+    const edgeConfigThreshold = config.edge?.failureThreshold || 3;
+    const usingBlobAsPrimary = edgeFailures >= edgeConfigThreshold;
+    
+    // Check Blob storage status
+    const blobEnabled = blobStorage.isBlobMirroringEnabled();
+    let blobStatus = { 
+      enabled: blobEnabled,
+      accessible: false,
+      count: 0
+    };
+    
+    if (blobEnabled) {
+      try {
+        const blobResult = await blobStorage.getRegistrationsFromBlob();
+        blobStatus.accessible = blobResult.success;
+        blobStatus.count = blobResult.success ? blobResult.data.length : 0;
+        blobStatus.url = blobStorage.getRegistrationBlobUrl();
+      } catch (error) {
+        console.error('Error checking blob health:', error);
+      }
+    }
+    
+    // Check local storage
+    let localStatus = {
+      path: path.resolve(config.registrationsFilePath),
+      exists: false,
+      count: 0
+    };
+    
+    try {
+      const localData = edgeConfig.getRegistrationsFromLocalStorage();
+      localStatus.exists = true;
+      localStatus.count = localData.length;
+    } catch (error) {
+      console.error('Error checking local storage health:', error);
+    }
+    
+    // Return comprehensive health status
+    res.json({
+      timestamp: new Date().toISOString(),
+      overall: {
+        status: isEdgeConfigAvailable || blobStatus.accessible || localStatus.exists ? 'healthy' : 'unhealthy',
+        primaryStorage: usingBlobAsPrimary ? 'blob' : (isEdgeConfigAvailable ? 'edgeConfig' : 'local'),
+        registrationCount: {
+          edgeConfig: isEdgeConfigAvailable ? await edgeConfig.getRegistrationCount() : 0,
+          blob: blobStatus.count,
+          local: localStatus.count
+        }
+      },
+      edgeConfig: {
+        available: isEdgeConfigAvailable,
+        failureCount: edgeFailures,
+        failureThreshold: edgeConfigThreshold,
+        isPrimary: isEdgeConfigAvailable && !usingBlobAsPrimary
+      },
+      blobStorage: blobStatus,
+      localStorage: localStatus
+    });
+  } catch (error) {
+    console.error('Error checking system health:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check system health: ' + error.message
     });
   }
 });

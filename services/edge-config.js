@@ -6,13 +6,21 @@ const config = require('../config');
 const { fetchWithRetry } = require('../utils/fetch-utils');
 const fs = require('fs');
 const path = require('path');
+const blobStorage = require('./blob-storage');
+const fetch = require('node-fetch');
 
 // Edge Config client
 let edgeConfigClient = null;
 let edgeConfigAvailable = false;
+let edgeConfigInitialized = false;
+let isEdgeConfigInitializing = false;
 
 // Local fallback file path
 const LOCAL_FALLBACK_FILE = path.join(__dirname, '..', 'data', 'passover-registrations.json');
+
+// Count consecutive Edge Config failures
+let edgeConfigFailureCount = 0;
+const EDGE_CONFIG_FAILURE_THRESHOLD = config.edge?.failureThreshold || 3;
 
 // Ensure data directory exists
 try {
@@ -148,6 +156,11 @@ async function getRegistrationsFromEdgeConfig() {
         // Also save to local storage as backup
         await saveRegistrationsToLocalStorage(normalizedData);
         
+        // Mirror to blob storage if enabled
+        if (blobStorage.isBlobMirroringEnabled()) {
+          blobStorage.syncRegistrationsToBlob(normalizedData);
+        }
+        
         return normalizedData;
       } catch (sdkError) {
         console.log('SDK method failed, falling back to direct API call:', sdkError.message);
@@ -193,9 +206,27 @@ async function getRegistrationsFromEdgeConfig() {
     // Also save to local storage as backup
     await saveRegistrationsToLocalStorage(normalizedData);
     
+    // Mirror to blob storage if enabled
+    if (blobStorage.isBlobMirroringEnabled()) {
+      blobStorage.syncRegistrationsToBlob(normalizedData);
+    }
+    
     return normalizedData;
   } catch (err) {
     console.log('Edge Config fetch error:', err.message);
+    
+    // Try blob storage first if enabled
+    if (blobStorage.isBlobMirroringEnabled()) {
+      console.log('Attempting to fetch from Blob storage...');
+      const blobResult = await blobStorage.getRegistrationsFromBlob();
+      
+      if (blobResult.success && blobResult.data.length > 0) {
+        console.log(`Retrieved ${blobResult.data.length} registrations from Blob storage`);
+        return blobResult.data;
+      }
+      
+      console.log('Blob storage retrieval unsuccessful, trying local storage...');
+    }
     
     // Try local storage as last resort
     console.log('Falling back to local storage for registrations...');
@@ -215,6 +246,11 @@ async function saveRegistrationsToEdgeConfig(registrations) {
     // Always save to local storage first as backup
     await saveRegistrationsToLocalStorage(registrations);
     
+    // Mirror to blob storage if enabled
+    if (blobStorage.isBlobMirroringEnabled()) {
+      blobStorage.syncRegistrationsToBlob(registrations, true);
+    }
+    
     // Try using the SDK client first
     if (edgeConfigClient) {
       try {
@@ -223,6 +259,12 @@ async function saveRegistrationsToEdgeConfig(registrations) {
         return true;
       } catch (sdkError) {
         console.warn('SDK save failed, falling back to direct API:', sdkError.message);
+        // Check if it's a size limitation error
+        if (sdkError.message && (sdkError.message.includes('too large') || sdkError.message.includes('size limit'))) {
+          console.warn('Edge Config size limit reached, will use Blob storage as primary storage');
+          edgeConfigAvailable = false;
+          return true; // Still return success since we've saved to Blob and local storage
+        }
         // Fall through to direct API call
       }
     }
@@ -250,6 +292,14 @@ async function saveRegistrationsToEdgeConfig(registrations) {
     if (!updateResponse.ok) {
       const errorText = await updateResponse.text();
       console.error(`Error saving registrations: ${updateResponse.status} - ${errorText}`);
+      
+      // Check if it's a size limitation error
+      if (errorText && (errorText.includes('too large') || errorText.includes('size limit'))) {
+        console.warn('Edge Config size limit reached, will use Blob storage as primary storage');
+        edgeConfigAvailable = false;
+        return true; // Still return success since we've saved to Blob and local storage
+      }
+      
       throw new Error(`Failed to save registrations: ${updateResponse.status}`);
     }
     
@@ -258,8 +308,8 @@ async function saveRegistrationsToEdgeConfig(registrations) {
   } catch (err) {
     console.error('Edge Config save error:', err);
     
-    // If we've already saved to local storage, we can still return success
-    console.log('Using local storage fallback for registration data');
+    // If we've already saved to local storage and blob, we can still return success
+    console.log('Using local/blob storage fallback for registration data');
     return true;
   }
 }
@@ -270,50 +320,196 @@ async function saveRegistrationsToEdgeConfig(registrations) {
  */
 async function getRegistrations() {
   try {
+    // First, always save to localStorage for redundancy
+    const localRegistrations = await getRegistrationsFromLocalStorage();
+    
+    // If we've exceeded the failure threshold and blob mirroring is enabled, prioritize blob storage
+    if (edgeConfigFailureCount >= EDGE_CONFIG_FAILURE_THRESHOLD && blobStorage.isBlobMirroringEnabled()) {
+      console.log(`Edge Config has failed ${edgeConfigFailureCount} consecutive times. Trying Blob storage first.`);
+      
+      try {
+        const blobResult = await blobStorage.getRegistrationsFromBlob();
+        if (blobResult.success) {
+          console.log('Successfully retrieved registrations from Blob storage');
+          // Reset the failure count if we successfully used the blob storage as fallback
+          edgeConfigFailureCount = 0;
+          return blobResult;
+        }
+      } catch (error) {
+        console.error('Error retrieving from Blob storage:', error);
+      }
+    }
+    
     // Ensure the Edge Config client is initialized
     if (!edgeConfigAvailable) {
       try {
         edgeConfigAvailable = await initializeEdgeConfig();
+        // Reset failure count on successful initialization
+        if (edgeConfigAvailable) {
+          edgeConfigFailureCount = 0;
+        }
       } catch (error) {
         console.warn('Edge Config unavailable, will try using local storage fallback:', error.message);
+        edgeConfigFailureCount++; // Increment failure counter
+        
+        // Try blob storage first if enabled
+        if (blobStorage.isBlobMirroringEnabled()) {
+          console.log('Attempting to fetch from Blob storage...');
+          const blobResult = await blobStorage.getRegistrationsFromBlob();
+          
+          if (blobResult.success && blobResult.data.length > 0) {
+            console.log(`Retrieved ${blobResult.data.length} registrations from Blob storage`);
+            return blobResult;
+          }
+          
+          console.log('Blob storage retrieval unsuccessful, trying local storage...');
+        }
+        
         // Even though Edge Config is unavailable, we can still try to use local storage
-        return await getRegistrationsFromLocalStorage();
+        return { success: true, data: localRegistrations, message: 'Using local storage fallback' };
       }
     }
     
-    return getRegistrationsFromEdgeConfig();
+    try {
+      const registrations = await getRegistrationsFromEdgeConfig();
+      // Reset failure count on successful retrieval
+      edgeConfigFailureCount = 0;
+      return { success: true, data: registrations, message: 'Using Edge Config' };
+    } catch (error) {
+      console.error('Error retrieving from Edge Config:', error.message);
+      edgeConfigFailureCount++; // Increment failure counter
+      
+      // Log the failure count
+      console.warn(`Edge Config has failed ${edgeConfigFailureCount} times in a row`);
+      
+      // Try blob storage if enabled
+      if (blobStorage.isBlobMirroringEnabled()) {
+        console.log('Attempting to fetch from Blob storage after Edge Config failure...');
+        const blobResult = await blobStorage.getRegistrationsFromBlob();
+        
+        if (blobResult.success && blobResult.data.length > 0) {
+          console.log(`Retrieved ${blobResult.data.length} registrations from Blob storage`);
+          return { success: true, data: blobResult.data, message: 'Using Blob storage as fallback' };
+        }
+        
+        console.log('Blob storage retrieval unsuccessful, trying local storage...');
+      }
+      
+      // Final fallback to local storage
+      console.log('Falling back to local storage after error');
+      return { success: true, data: localRegistrations, message: 'Using local storage fallback' };
+    }
   } catch (error) {
     console.error('Error in getRegistrations:', error.message);
+    edgeConfigFailureCount++; // Increment failure counter
+    
     // Final fallback to local storage
     console.log('Falling back to local storage after error');
-    return await getRegistrationsFromLocalStorage();
+    return { success: false, data: await getRegistrationsFromLocalStorage(), message: 'Error in getRegistrations' };
   }
 }
 
 /**
  * Save registrations (wrapper function)
  * @param {Array} registrations - Array of registrations to save
- * @returns {Promise<boolean>} - Whether save was successful
+ * @returns {Promise<{success: boolean, message: string}>}
  */
 async function saveRegistrations(registrations) {
   try {
+    // First, always save to localStorage for redundancy
+    await saveRegistrationsToLocalStorage(registrations);
+    
+    // If we've exceeded the failure threshold and blob mirroring is enabled, prioritize blob storage
+    if (edgeConfigFailureCount >= EDGE_CONFIG_FAILURE_THRESHOLD && blobStorage.isBlobMirroringEnabled()) {
+      console.log(`Edge Config has failed ${edgeConfigFailureCount} consecutive times. Saving to Blob storage first.`);
+      
+      try {
+        const blobResult = await blobStorage.saveRegistrationsToBlob(registrations);
+        
+        // Even if Blob storage succeeded, try to reinitialize Edge Config in the background
+        if (!isEdgeConfigInitialized && !isEdgeConfigInitializing) {
+          console.log('Trying to reinitialize Edge Config in the background...');
+          initializeEdgeConfig().catch(error => {
+            console.warn('Failed to reinitialize Edge Config:', error);
+            edgeConfigFailureCount++; // Increment failure count if reinitialization fails
+          });
+        }
+        
+        if (blobResult.success) {
+          return { success: true, message: 'Successfully saved registrations to Blob storage' };
+        }
+      } catch (error) {
+        console.error('Failed to save to Blob storage:', error);
+      }
+    }
+    
     // Ensure the Edge Config client is initialized
     if (!edgeConfigAvailable) {
       try {
         edgeConfigAvailable = await initializeEdgeConfig();
+        // Reset failure count on successful initialization
+        if (edgeConfigAvailable) {
+          edgeConfigFailureCount = 0;
+        }
       } catch (error) {
         console.warn('Edge Config unavailable, will save to local storage only:', error.message);
-        // Even though Edge Config is unavailable, we can still save to local storage
-        return await saveRegistrationsToLocalStorage(registrations);
+        edgeConfigFailureCount++; // Increment failure counter
+        
+        // Try to save to Blob storage if enabled
+        if (blobStorage.isBlobMirroringEnabled()) {
+          console.log('Attempting to save to Blob storage instead...');
+          const blobResult = await blobStorage.saveRegistrationsToBlob(registrations);
+          
+          if (blobResult.success) {
+            console.log('Successfully saved registrations to Blob storage');
+            return { success: true, message: 'Successfully saved registrations to Blob storage' };
+          }
+          
+          console.log('Blob storage save unsuccessful, data is still saved to local storage');
+        }
+        
+        // Even though Edge Config is unavailable, we already saved to local storage
+        return { success: true, message: 'Successfully saved registrations to local storage' };
       }
     }
     
-    return saveRegistrationsToEdgeConfig(registrations);
+    try {
+      const success = await saveRegistrationsToEdgeConfig(registrations);
+      // Reset failure count on successful save
+      if (success) {
+        edgeConfigFailureCount = 0;
+      }
+      return { success: true, message: 'Successfully saved registrations to Edge Config' };
+    } catch (error) {
+      console.error('Error saving to Edge Config:', error.message);
+      edgeConfigFailureCount++; // Increment failure counter
+      
+      // Log the failure count
+      console.warn(`Edge Config has failed ${edgeConfigFailureCount} times in a row`);
+      
+      // Try to save to Blob storage if enabled
+      if (blobStorage.isBlobMirroringEnabled()) {
+        console.log('Attempting to save to Blob storage after Edge Config failure...');
+        const blobResult = await blobStorage.saveRegistrationsToBlob(registrations);
+        
+        if (blobResult.success) {
+          console.log('Successfully saved registrations to Blob storage');
+          return { success: true, message: 'Successfully saved registrations to Blob storage' };
+        }
+        
+        console.log('Blob storage save unsuccessful, data is still saved to local storage');
+      }
+      
+      // We've already saved to local storage, so consider it a partial success
+      return { success: true, message: 'Successfully saved registrations to local storage' };
+    }
   } catch (error) {
     console.error('Error in saveRegistrations:', error.message);
-    // Final fallback to local storage
+    edgeConfigFailureCount++; // Increment failure counter
+    
+    // We've already saved to local storage, so consider it a partial success
     console.log('Falling back to local storage after error');
-    return await saveRegistrationsToLocalStorage(registrations);
+    return { success: false, message: 'Error in saveRegistrations' };
   }
 }
 
@@ -546,6 +742,38 @@ function isEdgeConfigAvailable() {
   return edgeConfigAvailable;
 }
 
+/**
+ * Returns the current failure count for Edge Config
+ * @returns {number} The number of consecutive Edge Config failures
+ */
+function getFailureCount() {
+  return edgeConfigFailureCount;
+}
+
+/**
+ * Gets the count of registrations from Edge Config
+ * @returns {Promise<number>} The number of registrations or 0 if unavailable
+ */
+async function getRegistrationCount() {
+  try {
+    if (!edgeConfigAvailable) {
+      console.log('Edge Config not available for getting registration count');
+      return 0;
+    }
+
+    if (!edgeConfigClient) {
+      console.log('Edge Config client not initialized for getting registration count');
+      return 0;
+    }
+
+    const registrations = await edgeConfigClient.get('registrations');
+    return Array.isArray(registrations) ? registrations.length : 0;
+  } catch (error) {
+    console.error('Error getting registration count from Edge Config:', error.message);
+    return 0;
+  }
+}
+
 module.exports = {
   initEdgeConfigClient,
   getRegistrations,
@@ -553,5 +781,9 @@ module.exports = {
   initializeEdgeConfig,
   testEdgeConfig,
   migrateRegistrationsWithDonationFields,
-  isEdgeConfigAvailable
+  isEdgeConfigAvailable,
+  getFailureCount,
+  getRegistrationCount,
+  getRegistrationsFromLocalStorage,
+  saveRegistrationsToLocalStorage
 }; 

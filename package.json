@@ -11,6 +11,7 @@
     "vercel-build": "echo 'Skipping file migration - files already in public directory'"
   },
   "dependencies": {
+    "@vercel/blob": "^0.27.3",
     "@vercel/edge-config": "^0.4.1",
     "body-parser": "^1.20.3",
     "cors": "^2.8.5",
