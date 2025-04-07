@@ -411,7 +411,7 @@ router.get('/admin/health', async (req, res) => {
     
     // Check local storage
     let localStatus = {
-      path: path.resolve(config.registrationsFilePath),
+      path: path.join(__dirname, '..', 'data', 'passover-registrations.json'),
       exists: false,
       count: 0
     };
