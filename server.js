@@ -672,9 +672,25 @@ app.post('/send-contact-form', (req, res) => {
 // Get all registrations endpoint
 app.get('/get-passover-registrations', async (req, res) => {
   try {
+    // Check if this is an admin request
+    const isAdminRequest = req.query.admin === 'true';
+    
+    if (isAdminRequest) {
+      // Handle admin authentication similar to /admin/registrations
+      const providedPassword = req.query.password;
+      const adminPassword = process.env.ADMIN_PASSWORD || 'rejewvenate2025';
+      
+      if (providedPassword !== adminPassword) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+      
+      console.log('Admin access to get-passover-registrations endpoint');
+    }
+    
     // Log the request details for debugging
     console.log('Registration retrieval request:', {
       id: req.query.id,
+      isAdmin: isAdminRequest,
       headers: req.headers.host,
       referrer: req.headers.referer || 'none'
     });
@@ -728,12 +744,32 @@ app.get('/get-passover-registrations', async (req, res) => {
       }
     }
     
+    // For admin requests, return all registrations with additional data
+    if (isAdminRequest) {
+      console.log(`Returning ${registrations.length} registrations for admin dashboard`);
+      
+      // Add a timestamp to help with client-side caching
+      const responseData = { 
+        success: true, 
+        registrations,
+        timestamp: new Date().toISOString(),
+        count: registrations.length
+      };
+      
+      // Set proper cache control headers to prevent stale data
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+      
+      return res.json(responseData);
+    }
+    
     // Get a single registration if ID is provided
     const registrationId = req.query.id;
     if (registrationId) {
       console.log(`Looking for registration with ID: ${registrationId}`);
       console.log(`Available IDs: ${registrations.map(r => r.registrationId || 'undefined').join(', ')}`);
-      
+
       const registration = registrations.find(reg => reg.registrationId === registrationId);
       if (registration) {
         console.log(`Found registration for ${registration.firstName} ${registration.lastName}`);
@@ -908,10 +944,27 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
   try {
     // Check if Edge Config is available
     if (!isEdgeConfigAvailable) {
-      return res.status(503).json({
-        success: false,
-        message: 'Registration deletion is unavailable - Edge Config is required'
-      });
+      console.warn('Edge Config unavailable during registration deletion attempt');
+      
+      // Try to initialize it on demand
+      try {
+        const initialized = await testEdgeConfig(3);
+        if (!initialized) {
+          console.error('Failed to initialize Edge Config for registration deletion');
+          return res.status(503).json({
+            success: false,
+            message: 'Registration deletion is temporarily unavailable. Please try again in a few minutes.'
+          });
+        } else {
+          console.log('Edge Config successfully initialized during deletion attempt');
+        }
+      } catch (initError) {
+        console.error('Error initializing Edge Config during deletion:', initError);
+        return res.status(503).json({
+          success: false,
+          message: 'Registration system is experiencing technical difficulties'
+        });
+      }
     }
     
     const registrationId = req.params.id;
@@ -925,8 +978,31 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
     
     console.log('Attempting to delete registration:', registrationId);
     
-    // Get all current registrations from Edge Config
-    const allRegistrations = await getRegistrations();
+    // Get all current registrations from Edge Config with retry logic
+    let allRegistrations;
+    let getAttempts = 3;
+    
+    while (getAttempts > 0) {
+      try {
+        console.log(`Retrieving current registrations for deletion (attempt ${4-getAttempts}/3)...`);
+        allRegistrations = await getRegistrations();
+        console.log(`Retrieved ${allRegistrations.length} existing registrations for deletion filtering`);
+        break; // Success, exit the loop
+      } catch (getError) {
+        getAttempts--;
+        if (getAttempts === 0) {
+          console.error('Failed to retrieve registrations for deletion after multiple attempts:', getError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to access registration data. Please try again in a few minutes.'
+          });
+        }
+        
+        console.log(`Error retrieving registrations for deletion, ${getAttempts} attempts remaining:`, getError.message);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
     
     console.log(`Starting with ${allRegistrations.length} registrations, looking for ID: ${registrationId}`);
     
@@ -950,17 +1026,38 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
       return res.status(404).json({ 
         success: false, 
         message: 'Registration not found',
-        availableIds: allIds
+        availableIds: allIds.slice(0, 5) // Only send first 5 for privacy
       });
     }
     
     console.log(`Removed registration, count reduced from ${allRegistrations.length} to ${filteredRegistrations.length}`);
     
-    // Save updated registrations to Edge Config
-    await saveRegistrations(filteredRegistrations);
-    console.log('Updated Edge Config with removed registration');
+    // Save updated registrations to Edge Config with retry logic
+    let saveAttempts = 3;
     
-    return res.json({ 
+    while (saveAttempts > 0) {
+      try {
+        console.log(`Saving updated registrations after deletion (attempt ${4-saveAttempts}/3)...`);
+        await saveRegistrations(filteredRegistrations);
+        console.log('Updated Edge Config with removed registration');
+        break; // Success, exit the loop
+      } catch (saveError) {
+        saveAttempts--;
+        if (saveAttempts === 0) {
+          console.error('Failed to save registrations after deletion after multiple attempts:', saveError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to save changes. Please try again in a few minutes.'
+          });
+        }
+        
+        console.log(`Error saving registrations after deletion, ${saveAttempts} attempts remaining:`, saveError.message);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    return res.status(200).json({ 
       success: true, 
       message: 'Registration deleted successfully',
       originalCount: allRegistrations.length,
@@ -969,7 +1066,8 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
     
   } catch (error) {
     console.error('Error in delete endpoint:', error);
-    res.status(500).json({ 
+    // Ensure we always return valid JSON
+    return res.status(500).json({ 
       success: false, 
       message: 'Failed to delete registration: ' + error.message
     });
@@ -1135,17 +1233,72 @@ app.get('/admin/registrations', async (req, res) => {
   try {
     // Check if Edge Config is available
     if (!isEdgeConfigAvailable) {
-      return res.status(503).json({
-        success: false,
-        message: 'Registration management is unavailable - Edge Config is required'
-      });
+      console.warn('Edge Config unavailable during admin dashboard access');
+      
+      // Try to initialize it on demand
+      try {
+        const initialized = await testEdgeConfig(3);
+        if (!initialized) {
+          console.error('Failed to initialize Edge Config for admin dashboard');
+          return res.status(503).json({
+            success: false,
+            message: 'Registration management is temporarily unavailable. Please try again in a few minutes.'
+          });
+        } else {
+          console.log('Edge Config successfully initialized during admin dashboard access');
+        }
+      } catch (initError) {
+        console.error('Error initializing Edge Config for admin dashboard:', initError);
+        return res.status(503).json({
+          success: false,
+          message: 'Registration system is experiencing technical difficulties'
+        });
+      }
     }
     
-    // Get registrations only from Edge Config
-    const registrations = await getRegistrations();
-    res.json({ success: true, registrations });
+    // Get registrations from Edge Config with retries
+    let registrations;
+    let getAttempts = 3;
+    
+    while (getAttempts > 0) {
+      try {
+        console.log(`Admin dashboard: Retrieving registrations (attempt ${4-getAttempts}/3)...`);
+        registrations = await getRegistrations();
+        console.log(`Admin dashboard: Retrieved ${registrations.length} registrations`);
+        break; // Success, exit the loop
+      } catch (getError) {
+        getAttempts--;
+        if (getAttempts === 0) {
+          console.error('Admin dashboard: Failed to retrieve registrations after multiple attempts:', getError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to access registration data. Please try again in a few minutes.'
+          });
+        }
+        
+        console.log(`Admin dashboard: Error retrieving registrations, ${getAttempts} attempts remaining:`, getError.message);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    // Add a timestamp to help with client-side caching
+    const responseData = { 
+      success: true, 
+      registrations,
+      timestamp: new Date().toISOString(),
+      count: registrations.length
+    };
+    
+    // Set proper cache control headers to prevent stale data
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    
+    // Return the data
+    return res.json(responseData);
   } catch (error) {
-    console.error('Error retrieving registrations:', error);
+    console.error('Error retrieving registrations for admin dashboard:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to retrieve registrations: ' + error.message 

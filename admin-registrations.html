@@ -267,8 +267,8 @@
         document.getElementById('loginPanel').classList.add('hidden');
         document.getElementById('registrationsPanel').classList.remove('hidden');
         
-        // Load registrations
-        loadRegistrations();
+        // Initialize dashboard with auto-refresh
+        setupAutoRefresh();
       } else {
         alert('Incorrect password');
       }
@@ -323,25 +323,100 @@
           Loading registrations... Please wait.
         </td></tr>`;
         
-        // Fetch registrations with retry
-        const response = await fetchWithRetry(`/admin/registrations?password=${ADMIN_PASSWORD}`);
+        // Try multiple endpoint variations with increased retries
+        const endpoints = [
+          `/admin/registrations?password=${ADMIN_PASSWORD}`,
+          `/get-passover-registrations?admin=true&password=${ADMIN_PASSWORD}`
+        ];
         
-        if (!response.ok) {
-          // Handle Edge Config unavailability specifically
-          if (response.status === 503) {
-            throw new Error('Registration system is temporarily unavailable. Edge Config storage cannot be accessed. Please try again later.');
+        let response = null;
+        let lastError = null;
+        const maxEndpointRetries = 2; // Per endpoint
+        const maxTotalRetries = 5;    // Total retries across all endpoints
+        
+        // Start with a total retry counter
+        let totalRetries = 0;
+        
+        // Try each endpoint with retries
+        for (const endpoint of endpoints) {
+          if (totalRetries >= maxTotalRetries) break;
+          
+          // Try this endpoint multiple times
+          for (let attempt = 0; attempt < maxEndpointRetries; attempt++) {
+            if (totalRetries >= maxTotalRetries) break;
+            
+            try {
+              console.log(`Trying endpoint ${endpoint}, attempt ${attempt + 1}/${maxEndpointRetries}`);
+              response = await fetchWithRetry(endpoint, {}, 2);
+              
+              // If we get a response, break the retry loop
+              if (response && response.ok) {
+                console.log(`Successfully loaded data from ${endpoint}`);
+                break;
+              }
+              
+              // If the endpoint exists but returns an error
+              if (response) {
+                if (response.status === 503) {
+                  console.warn(`Endpoint ${endpoint} returned service unavailable`);
+                  // This might be an Edge Config issue, wait a bit before retry
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                } else {
+                  console.warn(`Endpoint ${endpoint} returned ${response.status}`);
+                }
+              }
+            } catch (error) {
+              console.error(`Error loading from ${endpoint}, attempt ${attempt + 1}:`, error);
+              lastError = error;
+            }
+            
+            // Increment total retries and wait before trying again
+            totalRetries++;
+            if (attempt < maxEndpointRetries - 1) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
           }
           
-          const data = await response.json();
-          throw new Error(data.message || 'Failed to load registrations');
+          // If we got a successful response from this endpoint, break the loop
+          if (response && response.ok) break;
         }
         
-        const data = await response.json();
+        // If we have no response after all retries, throw an error
+        if (!response || !response.ok) {
+          const errorStatus = response ? `${response.status} ${response.statusText}` : 'connection failed';
+          throw new Error(`Failed to load registrations after multiple attempts (${errorStatus})`);
+        }
+        
+        // Parse the data
+        let data;
+        try {
+          data = await response.json();
+        } catch (parseError) {
+          console.error('Error parsing JSON response:', parseError);
+          throw new Error('Invalid response data from server');
+        }
         
         if (data.success) {
           allRegistrations = data.registrations;
           updateStats(allRegistrations);
           displayRegistrations(allRegistrations);
+          
+          // Show the last update time
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString();
+          
+          // Add a status message to the header
+          const header = document.querySelector('h1');
+          const statusElem = document.getElementById('updateStatus') || document.createElement('div');
+          statusElem.id = 'updateStatus';
+          statusElem.style.fontSize = '0.8rem';
+          statusElem.style.color = '#4BB543';
+          statusElem.style.marginTop = '5px';
+          statusElem.textContent = `Last updated: ${timeStr}`;
+          
+          if (!document.getElementById('updateStatus')) {
+            header.appendChild(statusElem);
+          }
         } else {
           throw new Error(data.message || 'Server returned an error');
         }
@@ -363,19 +438,78 @@
           <div style="margin-top: 10px; font-size: 0.9em;">
             Please try again later or contact technical support if the problem persists.
           </div>
+          <div style="margin-top: 20px;">
+            <button id="retryBtn" style="background-color: #3498db; padding: 8px 15px; border-radius: 4px; color: white; border: none; cursor: pointer;">
+              Retry Now
+            </button>
+          </div>
         </td></tr>`;
+        
+        // Add an event listener to the retry button
+        const retryBtn = document.getElementById('retryBtn');
+        if (retryBtn) {
+          retryBtn.addEventListener('click', loadRegistrations);
+        }
         
         // Clear the stats
         document.getElementById('totalRegistrations').textContent = '-';
         document.getElementById('firstNightCount').textContent = '-';
         document.getElementById('secondNightCount').textContent = '-';
         document.getElementById('totalDonations').textContent = '-';
+        
+        // Add status indicator
+        const header = document.querySelector('h1');
+        const statusElem = document.getElementById('updateStatus') || document.createElement('div');
+        statusElem.id = 'updateStatus';
+        statusElem.style.fontSize = '0.8rem';
+        statusElem.style.color = '#e74c3c';
+        statusElem.style.marginTop = '5px';
+        statusElem.textContent = `Failed to update - please retry manually`;
+        
+        if (!document.getElementById('updateStatus')) {
+          header.appendChild(statusElem);
+        }
       } finally {
         // Reset the button state
         const refreshBtn = document.getElementById('refreshBtn');
         refreshBtn.disabled = false;
         refreshBtn.textContent = 'Refresh Data';
       }
+    }
+    
+    // Setup auto-refresh functionality
+    function setupAutoRefresh() {
+      // Initial load
+      loadRegistrations();
+      
+      // Setup periodic refresh every 30 seconds
+      const REFRESH_INTERVAL = 30 * 1000; // 30 seconds
+      
+      // Create a status indicator for the next refresh
+      const header = document.querySelector('h1');
+      const refreshIndicator = document.createElement('div');
+      refreshIndicator.id = 'refreshIndicator';
+      refreshIndicator.style.fontSize = '0.8rem';
+      refreshIndicator.style.color = '#666';
+      refreshIndicator.style.marginTop = '5px';
+      header.appendChild(refreshIndicator);
+      
+      let nextRefreshTime = Date.now() + REFRESH_INTERVAL;
+      
+      // Update the countdown every second
+      setInterval(() => {
+        const timeLeft = Math.max(0, Math.floor((nextRefreshTime - Date.now()) / 1000));
+        refreshIndicator.textContent = `Auto-refresh in ${timeLeft} seconds`;
+      }, 1000);
+      
+      // Set up the actual refresh
+      setInterval(() => {
+        console.log('Auto-refreshing dashboard...');
+        loadRegistrations().catch(err => {
+          console.warn('Auto-refresh failed:', err);
+        });
+        nextRefreshTime = Date.now() + REFRESH_INTERVAL;
+      }, REFRESH_INTERVAL);
     }
     
     // Update statistics
@@ -577,11 +711,26 @@
             throw new Error('Registration system is temporarily unavailable. Edge Config storage cannot be accessed.');
           }
           
-          const error = await response.json();
-          throw new Error(error.message || 'Failed to delete registration');
+          // Try to parse response as JSON, but have a fallback if it fails
+          try {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to delete registration');
+          } catch (parseError) {
+            // If JSON parsing fails, use the status text
+            console.error('Error parsing delete response:', parseError);
+            throw new Error(`Server returned ${response.status} ${response.statusText}`);
+          }
         }
         
-        const result = await response.json();
+        // Carefully handle JSON parsing
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          console.error('Error parsing success response:', parseError);
+          // Consider it a success even if parsing fails, if status was 200 OK
+          result = { success: true, message: 'Registration removed (response parsing failed)' };
+        }
         
         // If successful, remove the row from the table
         const row = btn.closest('tr');
