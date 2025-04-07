@@ -20,24 +20,16 @@ router.post('/store-passover-registration', async (req, res) => {
         const edgeConfigWorking = await edgeConfig.testEdgeConfig(3);
         
         if (!edgeConfigWorking) {
-          console.error('Edge Config initialization failed during registration attempt');
-          return res.status(503).json({
-            success: false,
-            message: 'Our registration system is temporarily unavailable. ' +
-                    'Please try again in a few minutes or contact us directly at YKIEVMAN@BOWERYJEWS.ORG ' +
-                    'with your name, email, and which Seder night(s) you would like to attend.'
-          });
+          console.log('Edge Config unavailable, will continue with local fallback storage');
+          // Continue with registration - we'll use local fallback storage
         } else {
           console.log('Edge Config successfully initialized during registration attempt');
           // Edge Config is now available, continue with the registration
         }
       } catch (initError) {
         console.error('Error initializing Edge Config during registration:', initError);
-        return res.status(503).json({
-          success: false,
-          message: 'Our registration system is experiencing technical difficulties. ' +
-                  'Please try again in a few minutes or contact us directly at YKIEVMAN@BOWERYJEWS.ORG.'
-        });
+        console.log('Continuing with local fallback storage');
+        // Continue with registration using local fallback
       }
     }
 
@@ -66,6 +58,25 @@ router.post('/store-passover-registration', async (req, res) => {
  */
 router.get('/get-passover-registrations', async (req, res) => {
   try {
+    // Check if Edge Config is available, if not, try to initialize it
+    if (!edgeConfig.isEdgeConfigAvailable()) {
+      console.warn('Edge Config unavailable for get-passover-registrations - trying to initialize...');
+      try {
+        const edgeConfigWorking = await edgeConfig.testEdgeConfig(3);
+        
+        if (!edgeConfigWorking) {
+          console.log('Edge Config unavailable, will continue with local fallback');
+          // Continue with local fallback - the registration service will handle it
+        } else {
+          console.log('Edge Config successfully initialized');
+        }
+      } catch (initError) {
+        console.error('Error initializing Edge Config:', initError);
+        console.log('Continuing with local fallback');
+        // Continue with local fallback - the registration service will handle it
+      }
+    }
+    
     const registrationId = req.query.id;
     
     // If an ID is provided, get a specific registration
@@ -99,17 +110,9 @@ router.get('/get-passover-registrations', async (req, res) => {
   } catch (error) {
     console.error('Error getting registrations:', error);
     
-    // Provide a user-friendly error message
-    const isEdgeConfigError = error.message.includes('Edge Config');
-    const errorMessage = isEdgeConfigError
-      ? 'Our registration system is temporarily unavailable. Please try again later.'
-      : 'Failed to retrieve registrations: ' + error.message;
-    
-    const statusCode = isEdgeConfigError ? 503 : 500;
-    
-    res.status(statusCode).json({
+    res.status(500).json({
       success: false,
-      message: errorMessage
+      message: 'Failed to retrieve registrations: ' + error.message
     });
   }
 });
@@ -138,18 +141,15 @@ router.get('/registration/:id', async (req, res) => {
         const edgeConfigWorking = await edgeConfig.testEdgeConfig(3);
         
         if (!edgeConfigWorking) {
-          console.error('Edge Config initialization failed during registration lookup');
-          return res.status(503).json({
-            success: false,
-            message: 'Registration lookup is temporarily unavailable. Please try again in a few minutes.'
-          });
+          console.log('Edge Config unavailable for lookup, will continue with local fallback');
+          // Continue with local fallback - don't return an error
+        } else {
+          console.log('Edge Config successfully initialized during registration lookup');
         }
       } catch (initError) {
         console.error('Error initializing Edge Config during registration lookup:', initError);
-        return res.status(503).json({
-          success: false,
-          message: 'Registration system is experiencing technical difficulties.'
-        });
+        console.log('Continuing with local fallback for registration lookup');
+        // Continue with local fallback - don't return an error
       }
     }
     

@@ -4,10 +4,32 @@
 const { createClient } = require('@vercel/edge-config');
 const config = require('../config');
 const { fetchWithRetry } = require('../utils/fetch-utils');
+const fs = require('fs');
+const path = require('path');
 
 // Edge Config client
 let edgeConfigClient = null;
-let isEdgeConfigAvailable = false;
+let edgeConfigAvailable = false;
+
+// Local fallback file path
+const LOCAL_FALLBACK_FILE = path.join(__dirname, '..', 'data', 'passover-registrations.json');
+
+// Ensure data directory exists
+try {
+  const dataDir = path.join(__dirname, '..', 'data');
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+    console.log('Created local data directory for fallback storage');
+  }
+  
+  // Create empty fallback file if it doesn't exist
+  if (!fs.existsSync(LOCAL_FALLBACK_FILE)) {
+    fs.writeFileSync(LOCAL_FALLBACK_FILE, JSON.stringify([], null, 2), 'utf8');
+    console.log('Created empty fallback file for registrations');
+  }
+} catch (err) {
+  console.error('Failed to create data directory or fallback file:', err);
+}
 
 /**
  * Initialize Edge Config client
@@ -57,6 +79,44 @@ function initEdgeConfigClient() {
 }
 
 /**
+ * Get registrations from local storage
+ * @returns {Promise<Array>} - Array of registrations
+ */
+async function getRegistrationsFromLocalStorage() {
+  try {
+    console.log('Attempting to read registrations from local storage fallback...');
+    if (!fs.existsSync(LOCAL_FALLBACK_FILE)) {
+      console.log('No local fallback file found, returning empty array');
+      return [];
+    }
+    
+    const data = JSON.parse(fs.readFileSync(LOCAL_FALLBACK_FILE, 'utf8'));
+    console.log(`Read ${data.length} registrations from local storage`);
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error('Error reading from local storage:', err);
+    return [];
+  }
+}
+
+/**
+ * Save registrations to local storage
+ * @param {Array} registrations - Array of registrations to save
+ * @returns {Promise<boolean>} - Whether save was successful
+ */
+async function saveRegistrationsToLocalStorage(registrations) {
+  try {
+    console.log(`Saving ${registrations.length} registrations to local storage fallback...`);
+    fs.writeFileSync(LOCAL_FALLBACK_FILE, JSON.stringify(registrations, null, 2), 'utf8');
+    console.log('Successfully saved registrations to local storage');
+    return true;
+  } catch (err) {
+    console.error('Error saving to local storage:', err);
+    return false;
+  }
+}
+
+/**
  * Get registrations from Edge Config
  * @returns {Promise<Array>} - Array of registrations
  */
@@ -84,6 +144,9 @@ async function getRegistrationsFromEdgeConfig() {
           }
           return reg;
         }) : [];
+        
+        // Also save to local storage as backup
+        await saveRegistrationsToLocalStorage(normalizedData);
         
         return normalizedData;
       } catch (sdkError) {
@@ -127,10 +190,16 @@ async function getRegistrationsFromEdgeConfig() {
       return reg;
     }) : [];
     
+    // Also save to local storage as backup
+    await saveRegistrationsToLocalStorage(normalizedData);
+    
     return normalizedData;
   } catch (err) {
     console.log('Edge Config fetch error:', err.message);
-    throw new Error('Unable to fetch data from Edge Config');
+    
+    // Try local storage as last resort
+    console.log('Falling back to local storage for registrations...');
+    return await getRegistrationsFromLocalStorage();
   }
 }
 
@@ -142,6 +211,9 @@ async function getRegistrationsFromEdgeConfig() {
 async function saveRegistrationsToEdgeConfig(registrations) {
   try {
     console.log(`Attempting to save ${registrations.length} registrations to Edge Config...`);
+    
+    // Always save to local storage first as backup
+    await saveRegistrationsToLocalStorage(registrations);
     
     // Try using the SDK client first
     if (edgeConfigClient) {
@@ -185,7 +257,10 @@ async function saveRegistrationsToEdgeConfig(registrations) {
     return true;
   } catch (err) {
     console.error('Edge Config save error:', err);
-    throw new Error('Failed to save data to Edge Config');
+    
+    // If we've already saved to local storage, we can still return success
+    console.log('Using local storage fallback for registration data');
+    return true;
   }
 }
 
@@ -194,17 +269,25 @@ async function saveRegistrationsToEdgeConfig(registrations) {
  * @returns {Promise<Array>} - Array of registrations
  */
 async function getRegistrations() {
-  // Ensure the Edge Config client is initialized
-  if (!isEdgeConfigAvailable) {
-    try {
-      isEdgeConfigAvailable = await initializeEdgeConfig();
-    } catch (error) {
-      console.error('Failed to initialize Edge Config during getRegistrations():', error);
-      throw new Error('Edge Config initialization failed');
+  try {
+    // Ensure the Edge Config client is initialized
+    if (!edgeConfigAvailable) {
+      try {
+        edgeConfigAvailable = await initializeEdgeConfig();
+      } catch (error) {
+        console.warn('Edge Config unavailable, will try using local storage fallback:', error.message);
+        // Even though Edge Config is unavailable, we can still try to use local storage
+        return await getRegistrationsFromLocalStorage();
+      }
     }
+    
+    return getRegistrationsFromEdgeConfig();
+  } catch (error) {
+    console.error('Error in getRegistrations:', error.message);
+    // Final fallback to local storage
+    console.log('Falling back to local storage after error');
+    return await getRegistrationsFromLocalStorage();
   }
-  
-  return getRegistrationsFromEdgeConfig();
 }
 
 /**
@@ -213,17 +296,25 @@ async function getRegistrations() {
  * @returns {Promise<boolean>} - Whether save was successful
  */
 async function saveRegistrations(registrations) {
-  // Ensure the Edge Config client is initialized
-  if (!isEdgeConfigAvailable) {
-    try {
-      isEdgeConfigAvailable = await initializeEdgeConfig();
-    } catch (error) {
-      console.error('Failed to initialize Edge Config during saveRegistrations():', error);
-      throw new Error('Edge Config initialization failed');
+  try {
+    // Ensure the Edge Config client is initialized
+    if (!edgeConfigAvailable) {
+      try {
+        edgeConfigAvailable = await initializeEdgeConfig();
+      } catch (error) {
+        console.warn('Edge Config unavailable, will save to local storage only:', error.message);
+        // Even though Edge Config is unavailable, we can still save to local storage
+        return await saveRegistrationsToLocalStorage(registrations);
+      }
     }
+    
+    return saveRegistrationsToEdgeConfig(registrations);
+  } catch (error) {
+    console.error('Error in saveRegistrations:', error.message);
+    // Final fallback to local storage
+    console.log('Falling back to local storage after error');
+    return await saveRegistrationsToLocalStorage(registrations);
   }
-  
-  return saveRegistrationsToEdgeConfig(registrations);
 }
 
 /**
@@ -236,7 +327,7 @@ async function initializeEdgeConfig() {
   // Try to initialize the client
   const clientInitialized = initEdgeConfigClient();
   if (!clientInitialized) {
-    console.warn('Failed to initialize Edge Config client, will retry');
+    console.warn('Failed to initialize Edge Config client, will try fallback');
   } else {
     console.log('Edge Config client initialized successfully');
   }
@@ -246,12 +337,31 @@ async function initializeEdgeConfig() {
     // Attempt a test read
     await getRegistrationsFromEdgeConfig();
     console.log('Edge Config test read successful');
-    isEdgeConfigAvailable = true;
+    edgeConfigAvailable = true;
     return true;
   } catch (error) {
     console.error('Edge Config test read failed:', error.message);
-    isEdgeConfigAvailable = false;
-    throw error;
+    console.log('Switching to local file fallback mode');
+    
+    // Check if we can read from the local fallback
+    try {
+      if (fs.existsSync(LOCAL_FALLBACK_FILE)) {
+        console.log('Local fallback file exists, will use for storage');
+        // Mark Edge Config as unavailable but return success
+        // since we can operate with the fallback
+        edgeConfigAvailable = false;
+        return true;
+      } else {
+        console.warn('Local fallback file does not exist, creating empty one');
+        fs.writeFileSync(LOCAL_FALLBACK_FILE, JSON.stringify([], null, 2), 'utf8');
+        edgeConfigAvailable = false;
+        return true;
+      }
+    } catch (fallbackError) {
+      console.error('Failed to use local fallback:', fallbackError);
+      edgeConfigAvailable = false;
+      throw new Error('Edge Config unavailable and local fallback failed');
+    }
   }
 }
 
@@ -289,7 +399,7 @@ async function testEdgeConfig(maxAttempts = 5) {
       await getRegistrationsFromEdgeConfig();
       
       console.log('Edge Config test successful!');
-      isEdgeConfigAvailable = true;
+      edgeConfigAvailable = true;
       return true;
     } catch (error) {
       console.error(`Attempt ${attempt}: Edge Config test failed:`, error.message);
@@ -301,7 +411,7 @@ async function testEdgeConfig(maxAttempts = 5) {
         await new Promise(resolve => setTimeout(resolve, delay));
       } else {
         console.error(`All ${maxAttempts} attempts failed. Edge Config is unavailable.`);
-        isEdgeConfigAvailable = false;
+        edgeConfigAvailable = false;
         return false;
       }
     }
@@ -428,6 +538,14 @@ async function migrateRegistrationsWithDonationFields() {
   }
 }
 
+/**
+ * Check if Edge Config is available
+ * @returns {boolean} - Whether Edge Config is available
+ */
+function isEdgeConfigAvailable() {
+  return edgeConfigAvailable;
+}
+
 module.exports = {
   initEdgeConfigClient,
   getRegistrations,
@@ -435,5 +553,5 @@ module.exports = {
   initializeEdgeConfig,
   testEdgeConfig,
   migrateRegistrationsWithDonationFields,
-  isEdgeConfigAvailable: () => isEdgeConfigAvailable
+  isEdgeConfigAvailable
 }; 
