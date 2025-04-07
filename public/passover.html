@@ -622,7 +622,11 @@
               await processDonation(registrationId, donationAmount);
             } else {
               // Zero donation, go directly to success page
-              window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
+              // Construct a proper success URL for the current domain
+              const successUrl = new URL('/passover-registration-success.html', window.location.origin);
+              successUrl.searchParams.append('registration_id', registrationId);
+              
+              window.location.href = successUrl.toString();
             }
           } catch (serverError) {
             // Server registration failed completely
@@ -685,8 +689,12 @@
               // Open donation page in new tab
               window.open(data.url, '_blank');
 
+              // Construct a proper success URL for the current domain
+              const successUrl = new URL('/passover-registration-success.html', window.location.origin);
+              successUrl.searchParams.append('registration_id', registrationId);
+              
               // Redirect main page to success
-              window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
+              window.location.href = successUrl.toString();
             } else {
               throw new Error('No donation URL received from server');
             }
@@ -694,15 +702,23 @@
             console.error('Donation payment processing error:', donationError);
             alert('Your registration is complete, but we encountered an issue setting up your donation. You can visit the Donate page later to complete your donation if you wish.');
             
+            // Construct a proper success URL for the current domain
+            const successUrl = new URL('/passover-registration-success.html', window.location.origin);
+            successUrl.searchParams.append('registration_id', registrationId);
+            
             // Still redirect to success page
-            window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
+            window.location.href = successUrl.toString();
           }
         } catch (error) {
           console.error('Donation error:', error);
           alert('Your registration is complete, but there was an issue processing your donation. You can still donate later if you wish.');
 
+          // Construct a proper success URL for the current domain
+          const successUrl = new URL('/passover-registration-success.html', window.location.origin);
+          successUrl.searchParams.append('registration_id', registrationId);
+          
           // Redirect to success page without donation
-          window.location.href = `/passover-registration-success.html?registration_id=${registrationId}`;
+          window.location.href = successUrl.toString();
         }
       }
     });

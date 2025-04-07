@@ -24,6 +24,16 @@ async function createDonationCheckoutSession(donationDetails, origin) {
   // Convert amount to cents for Stripe
   const amountInCents = Math.round(donationAmount * 100);
   
+  // Ensure origin doesn't end with a slash
+  const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+  
+  // Log the URLs for debugging
+  const successUrl = `${baseUrl}/donation-success.html?donation=true&type=${donationType}`;
+  const cancelUrl = `${baseUrl}/donate.html`;
+  
+  console.log('Stripe success URL:', successUrl);
+  console.log('Stripe cancel URL:', cancelUrl);
+  
   // Create appropriate product name based on donation type
   let productName = 'One-time Donation';
   let description = 'Thank you for supporting Rejewvenate';
@@ -46,8 +56,8 @@ async function createDonationCheckoutSession(donationDetails, origin) {
       email,
       donationAmount
     },
-    success_url: `${origin}/donation-success.html?donation=true&type=${donationType}`,
-    cancel_url: `${origin}/donate.html`
+    success_url: successUrl,
+    cancel_url: cancelUrl
   };
   
   // Handle one-time vs recurring donations differently
@@ -116,6 +126,16 @@ async function createDonationCheckoutSession(donationDetails, origin) {
 async function createPassoverCheckoutSession(donationDetails, origin) {
   const { registrationId, amount, registrationData } = donationDetails;
   
+  // Ensure origin doesn't end with a slash
+  const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+  
+  // Log the URLs for debugging
+  const successUrl = `${baseUrl}/passover-registration-success.html?registration_id=${registrationId}&donation=true`;
+  const cancelUrl = `${baseUrl}/passover-registration-success.html?registration_id=${registrationId}`;
+  
+  console.log('Stripe success URL:', successUrl);
+  console.log('Stripe cancel URL:', cancelUrl);
+  
   // Create a Stripe Checkout Session
   const session = await stripeClient.checkout.sessions.create({
     payment_method_types: ['card'],
@@ -131,8 +151,8 @@ async function createPassoverCheckoutSession(donationDetails, origin) {
       quantity: 1,
     }],
     mode: 'payment',
-    success_url: `${origin}/passover-registration-success.html?registration_id=${registrationId}&donation=true`,
-    cancel_url: `${origin}/passover-registration-success.html?registration_id=${registrationId}`,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
     metadata: {
       registrationId,
       firstName: registrationData.firstName,

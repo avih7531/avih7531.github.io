@@ -22,10 +22,25 @@ router.post('/create-checkout-session', async (req, res) => {
       });
     }
     
-    const origin = req.headers.origin || req.headers.host;
+    // Fix URL construction to prevent protocol duplication
+    let origin = req.headers.origin || req.headers.host;
+    
+    // If origin doesn't already include the protocol, add it
+    if (origin && !origin.startsWith('http')) {
+      origin = `${req.protocol}://${origin}`;
+    }
+    
+    // For production environment with Vercel, use the VERCEL_URL if available
+    if (process.env.VERCEL_URL) {
+      origin = `https://${process.env.VERCEL_URL}`;
+    }
+    
+    // Log the constructed origin for debugging
+    console.log('Checkout session origin:', origin);
+    
     const session = await stripeService.createDonationCheckoutSession(
       { donationAmount, donationType, firstName, lastName, email },
-      `${req.protocol}://${origin}`
+      origin
     );
     
     res.json(session);
@@ -52,10 +67,25 @@ router.post('/create-passover-checkout-session', async (req, res) => {
       });
     }
     
-    const origin = req.headers.origin || req.headers.host;
+    // Fix URL construction to prevent protocol duplication
+    let origin = req.headers.origin || req.headers.host;
+    
+    // If origin doesn't already include the protocol, add it
+    if (origin && !origin.startsWith('http')) {
+      origin = `${req.protocol}://${origin}`;
+    }
+    
+    // For production environment with Vercel, use the VERCEL_URL if available
+    if (process.env.VERCEL_URL) {
+      origin = `https://${process.env.VERCEL_URL}`;
+    }
+    
+    // Log the constructed origin for debugging
+    console.log('Checkout session origin:', origin);
+    
     const session = await stripeService.createPassoverCheckoutSession(
       { registrationId, amount, registrationData },
-      `${req.protocol}://${origin}`
+      origin
     );
     
     res.json(session);
