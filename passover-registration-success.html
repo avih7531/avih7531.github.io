@@ -599,8 +599,14 @@
       
       console.log(`Updating registration ${registrationId} with donation amount ${amount}`);
       
-      // Convert amount to a number and ensure it's at least $1
-      const numericAmount = parseFloat(amount) || 1.00;
+      // Convert amount to a number without forcing a minimum
+      const numericAmount = parseFloat(amount);
+      
+      // Only proceed if the amount is a valid number
+      if (isNaN(numericAmount)) {
+        console.warn(`Invalid donation amount: ${amount}`);
+        return;
+      }
       
       try {
         // Send the update request to the server with retries

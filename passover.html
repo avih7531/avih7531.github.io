@@ -408,13 +408,13 @@
           <div class="checkbox-group">
             <label>
               <input type="checkbox" id="sederNight1" name="sederNight1">
-              First Seder Night (April 15, 2025)
+              First Seder Night (April 12, 2025)
             </label>
           </div>
           <div class="checkbox-group">
             <label>
               <input type="checkbox" id="sederNight2" name="sederNight2">
-              Second Seder Night (April 16, 2025)
+              Second Seder Night (April 13, 2025)
             </label>
           </div>
         </div>
@@ -429,13 +429,35 @@
         <div class="form-group">
           <label>Would you like to make a donation to help cover the costs?</label>
           <p style="margin-bottom: 20px;">If you're able, please consider supporting our Seder, which costs around $150 per person.
-            Donations of $75-$150 are suggested, but completely optional - we just want to share this special evening
-            with you!</p>
+            Donations are completely optional - we just want to share this special evening with you!</p>
 
-          <div class="form-group" style="display: flex; align-items: center; gap: 15px;">
+          <div class="amount-options">
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount1" value="180">
+              <label for="amount1">$180</label>
+            </div>
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount2" value="360">
+              <label for="amount2">$360</label>
+            </div>
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount3" value="540">
+              <label for="amount3">$540</label>
+            </div>
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount4" value="1800">
+              <label for="amount4">$1,800</label>
+            </div>
+            <div class="amount-option">
+              <input type="radio" name="amount" id="amount5" value="3600">
+              <label for="amount5">$3,600</label>
+            </div>
+          </div>
+
+          <div class="form-group" style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
             <input type="number" id="customAmount" name="customAmount" class="form-control custom-amount"
-              placeholder="$ Amount" min="0" required>
-            <span style="font-size: 0.9rem; color: #333;">Please enter a donation amount (enter 0 if you're not donating)</span>
+              placeholder="$ Custom amount" min="0" required>
+            <span style="font-size: 0.9rem; color: #333;">Enter 0 if you're not donating</span>
           </div>
         </div>
 
@@ -471,6 +493,26 @@
       
       // Maximum retries for API calls
       const MAX_RETRIES = 3;
+      
+      // Handle donation amount selection
+      const amountRadios = document.querySelectorAll('input[name="amount"]');
+      const customAmountInput = document.getElementById('customAmount');
+      
+      // When a radio button is clicked, update the custom amount field
+      amountRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+          if (this.checked) {
+            customAmountInput.value = this.value;
+          }
+        });
+      });
+      
+      // When custom amount is changed, uncheck radio buttons
+      customAmountInput.addEventListener('input', function() {
+        amountRadios.forEach(radio => {
+          radio.checked = false;
+        });
+      });
       
       // Retry function with exponential backoff
       async function fetchWithRetry(url, options, retries = MAX_RETRIES) {
@@ -572,7 +614,7 @@
 
             console.log('Registration saved successfully:', registrationResult);
             
-            // Check if donation was selected
+            // Get donation amount from either radio buttons or custom amount
             let donationAmount = parseFloat(document.getElementById('customAmount').value);
 
             // If donation amount is valid and greater than 0, process donation
