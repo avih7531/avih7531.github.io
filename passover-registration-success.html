@@ -563,17 +563,37 @@
       // If donation parameter exists (from direct form) or payment_intent (from Stripe)
       // exists, show donation thanks section
       if (urlParams.donation === 'true' || urlParams.payment_intent) {
-        // For Stripe checkout redirect, we'll use the amount stored in the registration data
-        // if available, otherwise use the amount from URL parameters
+        console.log('Donation detected in URL params:', urlParams);
+        
+        // For Stripe checkout redirect, we'll prioritize URL parameters first
         let donationAmount = '0';
         
-        if (registrationData.donationAmount) {
-          // Convert from cents if necessary
+        // First try to get the amount from the URL
+        if (urlParams.amount) {
+          console.log('Using amount from URL parameter:', urlParams.amount);
+          donationAmount = urlParams.amount;
+        } 
+        // Then try to get the payment_intent as a fallback
+        else if (urlParams.payment_intent) {
+          console.log('Payment intent detected, using 1.00 as minimum donation amount');
+          donationAmount = '1.00';  // When payment_intent exists but no amount, use $1 as fallback
+        }
+        // Finally fall back to registration data
+        else if (registrationData.donationAmount && parseFloat(registrationData.donationAmount) > 0) {
+          console.log('Using donation amount from registration data:', registrationData.donationAmount);
           const amountValue = parseFloat(registrationData.donationAmount);
           donationAmount = amountValue.toString();
-        } else if (urlParams.amount) {
-          donationAmount = urlParams.amount;
         }
+        
+        // Ensure donation amount is a valid number and at least 1.00 if a payment was made
+        const numericDonation = parseFloat(donationAmount);
+        if ((urlParams.donation === 'true' || urlParams.payment_intent) && 
+            (isNaN(numericDonation) || numericDonation < 0.01)) {
+          console.log('Setting minimum donation amount for successful payment');
+          donationAmount = '1.00';
+        }
+        
+        console.log('Final donation amount to display:', donationAmount);
         
         // Update the donation display
         document.getElementById('donationAmount').textContent = '$' + donationAmount;
@@ -583,28 +603,47 @@
         document.title = 'Registration & Donation Successful - Rejewvenate';
         
         // Update the registration with donation information if needed
-        if (registrationId && !registrationData.hasDonated) {
+        if (registrationId && 
+            (!registrationData.hasDonated || parseFloat(registrationData.donationAmount) <= 0) && 
+            parseFloat(donationAmount) > 0) {
           try {
+            console.log('Updating registration with donation info, current hasDonated status:', registrationData.hasDonated);
             await updateRegistrationWithDonation(registrationId, donationAmount);
           } catch (updateError) {
             console.error('Error updating registration with donation:', updateError);
           }
+        } else {
+          console.log('No need to update donation: already donated or amount is 0');
         }
       }
     });
     
     // Function to update the registration with donation information
     async function updateRegistrationWithDonation(registrationId, amount) {
-      if (!registrationId || !amount) return;
+      if (!registrationId) {
+        console.error('Cannot update donation: Missing registration ID');
+        return;
+      }
+      
+      if (!amount) {
+        console.error('Cannot update donation: Missing amount');
+        return;
+      }
       
       console.log(`Updating registration ${registrationId} with donation amount ${amount}`);
       
       // Convert amount to a number without forcing a minimum
       const numericAmount = parseFloat(amount);
       
-      // Only proceed if the amount is a valid number
+      // Only proceed if the amount is a valid number greater than zero
       if (isNaN(numericAmount)) {
         console.warn(`Invalid donation amount: ${amount}`);
+        return;
+      }
+      
+      // Don't process zero donations through this update function
+      if (numericAmount <= 0) {
+        console.warn(`Zero or negative donation amount: ${amount}, not updating`);
         return;
       }
       
@@ -625,6 +664,8 @@
               })
             });
             
+            console.log('Server response status:', response.status);
+            
             if (!response.ok) {
               // If the server is unavailable, try again
               if (response.status === 503) {
@@ -639,6 +680,7 @@
               // Parse error message from response if possible
               try {
                 const errorData = await response.json();
+                console.error('Server error response:', errorData);
                 throw new Error(errorData.message || `Server returned ${response.status}`);
               } catch (jsonError) {
                 throw new Error(`Server returned ${response.status}`);
@@ -648,6 +690,12 @@
             // Update was successful
             const data = await response.json();
             console.log('Successfully updated registration with donation:', data);
+            
+            // Update the displayed donation amount from the server response
+            if (data.donationAmount) {
+              document.getElementById('donationAmount').textContent = '$' + data.donationAmount;
+            }
+            
             return data;
           } catch (fetchError) {
             console.warn(`Attempt ${attempt + 1} failed:`, fetchError);

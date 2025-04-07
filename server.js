@@ -1408,11 +1408,28 @@ app.post('/update-registration-donation', async (req, res) => {
     }
     
     const { registrationId, donationAmount, stripeSessionId } = req.body;
+    console.log('Received donation update request:', { registrationId, donationAmount, stripeSessionId });
     
     if (!registrationId) {
       return res.status(400).json({ 
         success: false, 
         message: 'Registration ID is required' 
+      });
+    }
+    
+    // Validate donation amount is a number and not negative
+    const numericAmount = parseFloat(donationAmount);
+    if (isNaN(numericAmount)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid donation amount: ${donationAmount}`
+      });
+    }
+    
+    if (numericAmount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Negative donation amount not allowed: ${donationAmount}`
       });
     }
     
@@ -1446,11 +1463,20 @@ app.post('/update-registration-donation', async (req, res) => {
     const registrationIndex = registrations.findIndex(reg => reg.registrationId === registrationId);
     
     if (registrationIndex !== -1) {
+      console.log('Found registration to update:', registrations[registrationIndex]);
+      
       // Update the registration with proper field types
       registrations[registrationIndex].hasDonated = true;
-      registrations[registrationIndex].donationAmount = parseFloat(donationAmount).toFixed(2);
+      registrations[registrationIndex].donationAmount = numericAmount.toFixed(2);
       registrations[registrationIndex].stripeSessionId = stripeSessionId || null;
       registrations[registrationIndex].donationDate = new Date().toISOString();
+      
+      console.log('Updated registration data:', {
+        hasDonated: registrations[registrationIndex].hasDonated,
+        donationAmount: registrations[registrationIndex].donationAmount,
+        stripeSessionId: registrations[registrationIndex].stripeSessionId,
+        donationDate: registrations[registrationIndex].donationDate
+      });
       
       // Save back to storage with retry
       let saveAttempts = 3;
@@ -1744,9 +1770,53 @@ app.post('/stripe-webhook', bodyParser.raw({ type: 'application/json' }), async 
   let event;
   
   try {
-    // This would require your Stripe webhook secret - for future implementation
-    // event = stripe.webhooks.constructEvent(req.body, signature, 'whsec_your_stripe_webhook_secret');
-    // Process the event, update registrations accordingly
+    // For testing, just parse the JSON body directly without verification
+    // For production, you should uncomment the line below with proper webhook secret
+    // event = stripe.webhooks.constructEvent(req.body, signature, process.env.STRIPE_WEBHOOK_SECRET);
+    event = JSON.parse(req.body.toString());
+    
+    console.log('Received webhook event:', event.type);
+    
+    // Handle the event based on its type
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      console.log('Checkout session completed:', session.id);
+      
+      // Get the metadata with registration ID if it exists
+      if (session.metadata && session.metadata.registrationId) {
+        const registrationId = session.metadata.registrationId;
+        console.log('Processing donation for registration:', registrationId);
+        
+        // Get the payment amount in dollars
+        const amountTotal = session.amount_total / 100; // Convert from cents
+        
+        try {
+          // Get current registrations
+          const registrations = await getRegistrations();
+          
+          // Find the registration to update
+          const registrationIndex = registrations.findIndex(
+            reg => reg.registrationId === registrationId
+          );
+          
+          if (registrationIndex !== -1) {
+            // Update the registration with donation details
+            registrations[registrationIndex].hasDonated = true;
+            registrations[registrationIndex].donationAmount = amountTotal.toFixed(2);
+            registrations[registrationIndex].stripeSessionId = session.id;
+            registrations[registrationIndex].donationDate = new Date().toISOString();
+            
+            // Save the updated registrations
+            await saveRegistrations(registrations);
+            console.log(`Registration ${registrationId} updated with donation: $${amountTotal.toFixed(2)}`);
+          } else {
+            console.warn(`Registration ${registrationId} not found for donation update`);
+          }
+        } catch (error) {
+          console.error('Error updating registration with webhook data:', error);
+        }
+      }
+    }
     
     res.json({ received: true });
   } catch (error) {
