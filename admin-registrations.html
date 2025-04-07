@@ -700,10 +700,17 @@
         btn.disabled = true;
         btn.textContent = 'Deleting...';
         
-        // Send delete request to server with retry
+        console.log(`Attempting to delete registration: ${registrationId}`);
+        
+        // Send delete request to server with retry and proper error handling
         const response = await fetchWithRetry(`/delete-passover-registration/${registrationId}`, {
-          method: 'DELETE'
-        });
+          method: 'DELETE',
+          headers: {
+            'Accept': 'application/json'
+          }
+        }, 3);
+        
+        console.log(`Delete request response status: ${response.status}`);
         
         if (!response.ok) {
           // Handle Edge Config unavailability specifically
@@ -711,26 +718,74 @@
             throw new Error('Registration system is temporarily unavailable. Edge Config storage cannot be accessed.');
           }
           
-          // Try to parse response as JSON, but have a fallback if it fails
+          let errorText = '';
           try {
-            const error = await response.json();
-            throw new Error(error.message || 'Failed to delete registration');
-          } catch (parseError) {
-            // If JSON parsing fails, use the status text
-            console.error('Error parsing delete response:', parseError);
-            throw new Error(`Server returned ${response.status} ${response.statusText}`);
+            // Try to get the response text first
+            errorText = await response.text();
+            console.log('Error response text:', errorText);
+            
+            // If we got text, try to parse it as JSON
+            if (errorText) {
+              try {
+                const errorJson = JSON.parse(errorText);
+                throw new Error(errorJson.message || `Failed to delete registration (${response.status})`);
+              } catch (jsonError) {
+                console.error('Error parsing error response as JSON:', jsonError, 'Raw response:', errorText);
+                throw new Error(`Server error: ${response.status} ${response.statusText}. Raw response: ${errorText.substring(0, 100)}`);
+              }
+            } else {
+              throw new Error(`Server returned ${response.status} ${response.statusText} with no content`);
+            }
+          } catch (textError) {
+            console.error('Error reading response text:', textError);
+            throw new Error(`Server error: ${response.status} ${response.statusText}`);
           }
         }
         
-        // Carefully handle JSON parsing
-        let result;
+        // Try to get the response text first to inspect it
+        let responseText = '';
         try {
-          result = await response.json();
-        } catch (parseError) {
-          console.error('Error parsing success response:', parseError);
-          // Consider it a success even if parsing fails, if status was 200 OK
-          result = { success: true, message: 'Registration removed (response parsing failed)' };
+          responseText = await response.text();
+          console.log('Success response text:', responseText);
+          
+          // If empty response, consider it a success
+          if (!responseText.trim()) {
+            console.log('Empty response received, treating as success');
+            // Create a synthetic success result
+            var result = { success: true, message: 'Registration deleted (empty response)' };
+          } else {
+            // Try to parse the response text as JSON
+            try {
+              var result = JSON.parse(responseText);
+            } catch (jsonError) {
+              console.error('Error parsing success response as JSON:', jsonError, 'Raw response:', responseText);
+              
+              // Try to extract any JSON from the response if it contains mixed content
+              const jsonMatch = responseText.match(/\{.*\}/);
+              if (jsonMatch) {
+                try {
+                  const extractedJson = jsonMatch[0];
+                  console.log('Extracted potential JSON:', extractedJson);
+                  var result = JSON.parse(extractedJson);
+                } catch (extractError) {
+                  console.error('Error parsing extracted JSON:', extractError);
+                  // Create a synthetic success result since the status was OK
+                  var result = { success: true, message: 'Registration removed (parsing failed)' };
+                }
+              } else {
+                // Create a synthetic success result since the status was OK
+                var result = { success: true, message: 'Registration removed (parsing failed)' };
+              }
+            }
+          }
+        } catch (textError) {
+          console.error('Error reading response text:', textError);
+          // Consider it a success even if we can't read the response, since status was OK
+          var result = { success: true, message: 'Registration removed (reading response failed)' };
         }
+        
+        // Log the result for debugging
+        console.log('Deletion result:', result);
         
         // If successful, remove the row from the table
         const row = btn.closest('tr');
@@ -741,8 +796,12 @@
           setTimeout(() => row.remove(), 500);
         }
         
-        // Show success message
-        alert('Registration successfully removed');
+        // Show success message with any additional details
+        let successMessage = 'Registration successfully removed';
+        if (result && result.registrationId) {
+          successMessage += ` (ID: ${result.registrationId})`;
+        }
+        alert(successMessage);
         
         // Refresh the table to show updated data
         setTimeout(loadRegistrations, 600);
@@ -754,6 +813,7 @@
         if (error.message.includes('Edge Config')) {
           alert('The registration system is temporarily unavailable due to Edge Config connectivity issues. Please try again later.');
         } else {
+          // Show detailed error message in alert for debugging
           alert('Error: ' + error.message);
         }
         

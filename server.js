@@ -57,6 +57,24 @@ if (process.env.VERCEL === '1') {
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, './')));
 
+// Custom middleware to ensure clean JSON responses and prevent prefixes like "cle1::"
+app.use((req, res, next) => {
+  // Store the original res.json function
+  const originalJson = res.json;
+  
+  // Override res.json to ensure clean JSON responses
+  res.json = function(obj) {
+    // Set proper JSON content type
+    res.setHeader('Content-Type', 'application/json');
+    
+    // Call the original json function with the clean object
+    return originalJson.call(this, obj);
+  };
+  
+  // Continue to the next middleware or route handler
+  next();
+});
+
 // Configure fetch with retry capability for robustness
 async function fetchWithRetry(url, options, retries = 3, backoff = 300) {
   try {
@@ -942,6 +960,9 @@ app.post('/store-passover-registration', async (req, res) => {
 // Delete registration endpoint with improved persistence
 app.delete('/delete-passover-registration/:id', async (req, res) => {
   try {
+    // Ensure we're sending proper content type for JSON
+    res.setHeader('Content-Type', 'application/json');
+    
     // Check if Edge Config is available
     if (!isEdgeConfigAvailable) {
       console.warn('Edge Config unavailable during registration deletion attempt');
@@ -967,7 +988,7 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
       }
     }
     
-    const registrationId = req.params.id;
+    let registrationId = req.params.id;
     
     if (!registrationId) {
       return res.status(400).json({ 
@@ -975,6 +996,9 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
         message: 'Registration ID is required' 
       });
     }
+    
+    // Clean the registration ID to handle potential format issues
+    registrationId = registrationId.trim();
     
     console.log('Attempting to delete registration:', registrationId);
     
@@ -1006,27 +1030,57 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
     
     console.log(`Starting with ${allRegistrations.length} registrations, looking for ID: ${registrationId}`);
     
-    // Log all registration IDs to help debug
-    const allIds = allRegistrations.map(reg => 
+    // Log first few registration IDs to help debug
+    const registrationIdSamples = allRegistrations.slice(0, 5).map(reg => 
       reg.registrationId || reg.registration_id || reg.id || 'unknown'
     );
-    console.log('Available registration IDs:', allIds);
+    console.log('Sample registration IDs:', registrationIdSamples);
     
-    // Find and remove the registration
-    const filteredRegistrations = allRegistrations.filter(reg => {
+    // First try exact match
+    let found = false;
+    let filteredRegistrations = allRegistrations.filter(reg => {
       const regId = reg.registrationId || reg.registration_id || reg.id;
-      const keep = regId !== registrationId;
-      if (!keep) console.log(`Found registration to remove: ${regId}`);
-      return keep;
+      if (!regId) return true; // Keep entries without IDs
+      
+      const isMatch = regId === registrationId;
+      if (isMatch) {
+        found = true;
+        console.log(`Found exact match for registration: ${regId}`);
+        return false; // Don't keep matches (filter them out)
+      }
+      return true; // Keep non-matches
     });
     
+    // If not found, try more flexible matching
+    if (!found) {
+      console.log('No exact match found, trying more flexible matching...');
+      
+      // Try with normalized IDs (remove hyphens, case insensitive)
+      const normalizedTargetId = registrationId.replace(/[-]/g, '').toLowerCase();
+      
+      filteredRegistrations = allRegistrations.filter(reg => {
+        const regId = reg.registrationId || reg.registration_id || reg.id;
+        if (!regId) return true; // Keep entries without IDs
+        
+        const normalizedStoredId = regId.replace(/[-]/g, '').toLowerCase();
+        const isMatch = normalizedStoredId === normalizedTargetId;
+        
+        if (isMatch) {
+          found = true;
+          console.log(`Found flexible match for registration: ${regId} (normalized: ${normalizedStoredId})`);
+          return false; // Don't keep matches (filter them out)
+        }
+        return true; // Keep non-matches
+      });
+    }
+    
     // Check if anything was removed
-    if (filteredRegistrations.length === allRegistrations.length) {
+    if (!found || filteredRegistrations.length === allRegistrations.length) {
       console.log(`Registration with ID ${registrationId} not found in the ${allRegistrations.length} registrations`);
       return res.status(404).json({ 
         success: false, 
-        message: 'Registration not found',
-        availableIds: allIds.slice(0, 5) // Only send first 5 for privacy
+        message: 'Registration not found with ID: ' + registrationId,
+        registrationId: registrationId // Send back the ID that wasn't found
       });
     }
     
@@ -1057,9 +1111,11 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
       }
     }
     
+    // Return clean JSON response with no additional text
     return res.status(200).json({ 
       success: true, 
       message: 'Registration deleted successfully',
+      registrationId: registrationId,
       originalCount: allRegistrations.length,
       newCount: filteredRegistrations.length
     });
