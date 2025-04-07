@@ -4,6 +4,29 @@
 const edgeConfig = require('./edge-config');
 
 /**
+ * Extract registrations array from edgeConfig result
+ * @param {Object|Array} result - Result from edgeConfig.getRegistrations()
+ * @returns {Array} - Array of registrations
+ */
+function extractRegistrationsArray(result) {
+  // Check if the result is the new object format with a data property
+  if (result && typeof result === 'object' && 'data' in result) {
+    console.log(`Extracted ${result.data ? result.data.length : 0} registrations (${result.message})`);
+    return result.data;
+  }
+  
+  // For backward compatibility, if result is already an array, return it directly
+  if (Array.isArray(result)) {
+    console.log(`Extracted ${result.length} registrations (legacy format)`);
+    return result;
+  }
+  
+  // If we get here, something unexpected happened
+  console.warn('Unexpected registration data format:', result);
+  return [];
+}
+
+/**
  * Store a new registration
  * @param {Object} registration - Registration data
  * @returns {Promise<Object>} - The stored registration
@@ -18,7 +41,8 @@ async function storeRegistration(registration) {
   
   try {
     // Get current registrations
-    const registrations = await edgeConfig.getRegistrations();
+    const result = await edgeConfig.getRegistrations();
+    const registrations = extractRegistrationsArray(result);
     
     // Add new registration
     registrations.push(registration);
@@ -40,7 +64,8 @@ async function storeRegistration(registration) {
  */
 async function getRegistrationById(registrationId) {
   try {
-    const registrations = await edgeConfig.getRegistrations();
+    const result = await edgeConfig.getRegistrations();
+    const registrations = extractRegistrationsArray(result);
     
     // Try to find an exact match first
     const registration = registrations.find(reg => reg.registrationId === registrationId);
@@ -74,7 +99,8 @@ async function getRegistrationById(registrationId) {
  */
 async function getAllRegistrations() {
   try {
-    return await edgeConfig.getRegistrations();
+    const result = await edgeConfig.getRegistrations();
+    return extractRegistrationsArray(result);
   } catch (error) {
     console.error('Error getting all registrations:', error);
     throw new Error('Failed to retrieve registrations data');
@@ -91,7 +117,8 @@ async function getAllRegistrations() {
 async function updateRegistrationDonation(registrationId, donationAmount, stripeSessionId) {
   try {
     // Get current registrations
-    const registrations = await edgeConfig.getRegistrations();
+    const result = await edgeConfig.getRegistrations();
+    const registrations = extractRegistrationsArray(result);
     
     // Find the registration to update
     const registrationIndex = registrations.findIndex(reg => reg.registrationId === registrationId);
@@ -124,7 +151,8 @@ async function updateRegistrationDonation(registrationId, donationAmount, stripe
 async function deleteRegistration(registrationId) {
   try {
     // Get current registrations
-    const registrations = await edgeConfig.getRegistrations();
+    const result = await edgeConfig.getRegistrations();
+    const registrations = extractRegistrationsArray(result);
     
     // Find the registration index
     const registrationIndex = registrations.findIndex(reg => reg.registrationId === registrationId);
