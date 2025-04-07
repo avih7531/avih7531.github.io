@@ -27,6 +27,8 @@
     { "source": "/store-passover-registration", "destination": "/server.js" },
     { "source": "/update-registration-donation", "destination": "/server.js" },
     { "source": "/registration/:id", "destination": "/server.js" },
+    { "source": "/get-passover-registrations", "destination": "/server.js" },
+    { "source": "/api/get-passover-registrations", "destination": "/server.js" },
     { "source": "/admin/registrations", "destination": "/server.js" },
     { "source": "/create-checkout-session", "destination": "/server.js" },
     { "source": "/create-passover-checkout-session", "destination": "/server.js" },

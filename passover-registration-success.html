@@ -428,47 +428,61 @@
     }
     
     // Fetch registration details from the server with retry capability
-    async function fetchRegistrationDetails(registrationId, maxRetries = 2) {
+    async function fetchRegistrationDetails(registrationId, maxRetries = 3) {
       if (!registrationId) return null;
       
+      // Try several endpoint variations to handle different deployment configurations
+      const endpointVariations = [
+        `/get-passover-registrations?id=${registrationId}`,
+        `/api/get-passover-registrations?id=${registrationId}`,
+        `/registration/${registrationId}`
+      ];
+      
       for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-          console.log(`Fetching registration details, attempt ${attempt + 1}/${maxRetries}`);
-          const response = await fetch(`/get-passover-registrations?id=${registrationId}`);
-          
-          if (!response.ok) {
-            // Handle Edge Config unavailability specifically
-            if (response.status === 503) {
-              console.warn('Registration system is temporarily unavailable');
+        // Try each endpoint variation
+        for (const endpoint of endpointVariations) {
+          try {
+            console.log(`Fetching registration details from ${endpoint}, attempt ${attempt + 1}/${maxRetries}`);
+            const response = await fetch(endpoint);
+            
+            if (!response.ok) {
+              console.warn(`Endpoint ${endpoint} returned ${response.status}`);
               
-              // Only retry if we have attempts left
-              if (attempt < maxRetries - 1) {
-                const delay = Math.pow(2, attempt) * 500;
-                console.log(`Waiting ${delay}ms before retry...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                continue; // Try again
+              // If we get a 404, it means the endpoint doesn't exist, try the next one
+              if (response.status === 404) {
+                continue; // Try the next endpoint variation
               }
-              return null;
+              
+              // Handle Edge Config unavailability specifically
+              if (response.status === 503) {
+                console.warn('Registration system is temporarily unavailable');
+                // Continue to next endpoint or retry
+                continue;
+              }
+              
+              // For other errors, log but still try the next endpoint
+              throw new Error(`Failed to fetch registration details: ${response.status}`);
             }
-            throw new Error('Failed to fetch registration details');
+            
+            // If we get here, the response was successful
+            const data = await response.json();
+            
+            if (data.success && data.registration) {
+              console.log(`Successfully retrieved registration from ${endpoint}`);
+              return data.registration;
+            } else {
+              console.warn(`Endpoint ${endpoint} returned success:false or no registration data`);
+            }
+          } catch (error) {
+            console.error(`Error fetching from ${endpoint} (attempt ${attempt + 1}):`, error);
           }
-          
-          const data = await response.json();
-          
-          if (data.success && data.registration) {
-            return data.registration;
-          }
-          
-          return null;
-        } catch (error) {
-          console.error(`Error fetching registration details (attempt ${attempt + 1}):`, error);
-          
-          // Only retry if we have attempts left
-          if (attempt < maxRetries - 1) {
-            const delay = Math.pow(2, attempt) * 500;
-            console.log(`Waiting ${delay}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
+        }
+        
+        // If we've tried all endpoints and none worked, wait before retrying
+        if (attempt < maxRetries - 1) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.log(`All endpoints failed. Waiting ${delay}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
       

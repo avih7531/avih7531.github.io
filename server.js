@@ -672,31 +672,96 @@ app.post('/send-contact-form', (req, res) => {
 // Get all registrations endpoint
 app.get('/get-passover-registrations', async (req, res) => {
   try {
+    // Log the request details for debugging
+    console.log('Registration retrieval request:', {
+      id: req.query.id,
+      headers: req.headers.host,
+      referrer: req.headers.referer || 'none'
+    });
+    
     // Check if Edge Config is available
     if (!isEdgeConfigAvailable) {
-      return res.status(503).json({
-        success: false,
-        message: 'Registration retrieval is unavailable - Edge Config is required'
-      });
-    }
-    
-    // Get registrations from Edge Config
-    const registrations = await getRegistrations();
-    
-    // Get a single registration if ID is provided
-    const registrationId = req.query.id;
-    if (registrationId) {
-      const registration = registrations.find(reg => reg.registrationId === registrationId);
-      if (registration) {
-        return res.json({ success: true, registration });
-      } else {
-        return res.status(404).json({ 
+      console.warn('Edge Config unavailable during registration retrieval');
+      
+      // Try to initialize it on demand
+      try {
+        const initialized = await testEdgeConfig(3);
+        if (!initialized) {
+          console.error('Failed to initialize Edge Config for registration retrieval');
+          return res.status(503).json({
+            success: false,
+            message: 'Registration retrieval is temporarily unavailable. Please try again in a few minutes.'
+          });
+        }
+      } catch (initError) {
+        console.error('Error initializing Edge Config during retrieval:', initError);
+        return res.status(503).json({
           success: false, 
-          message: 'Registration not found with ID: ' + registrationId 
+          message: 'Registration system is experiencing technical difficulties'
         });
       }
     }
     
+    // Get registrations from Edge Config with retries
+    let registrations;
+    let getAttempts = 3;
+    
+    while (getAttempts > 0) {
+      try {
+        console.log(`Retrieving registrations for query (attempt ${4-getAttempts}/3)...`);
+        registrations = await getRegistrations();
+        console.log(`Retrieved ${registrations.length} registrations for filtering`);
+        break; // Success, exit the loop
+      } catch (getError) {
+        getAttempts--;
+        if (getAttempts === 0) {
+          console.error('Failed to retrieve registrations after multiple attempts:', getError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to access registration data. Please try again in a few minutes.'
+          });
+        }
+        
+        console.log(`Error retrieving registrations, ${getAttempts} attempts remaining:`, getError.message);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    // Get a single registration if ID is provided
+    const registrationId = req.query.id;
+    if (registrationId) {
+      console.log(`Looking for registration with ID: ${registrationId}`);
+      console.log(`Available IDs: ${registrations.map(r => r.registrationId || 'undefined').join(', ')}`);
+      
+      const registration = registrations.find(reg => reg.registrationId === registrationId);
+      if (registration) {
+        console.log(`Found registration for ${registration.firstName} ${registration.lastName}`);
+        return res.json({ success: true, registration });
+      } else {
+        console.warn(`Registration with ID ${registrationId} not found in ${registrations.length} registrations`);
+        
+        // Try to handle common ID format variations
+        const alternativeFormatRegistration = registrations.find(reg => {
+          if (!reg.registrationId) return false;
+          return reg.registrationId.replace(/-/g, '') === registrationId.replace(/-/g, '') || 
+                 reg.registrationId.toLowerCase() === registrationId.toLowerCase();
+        });
+        
+        if (alternativeFormatRegistration) {
+          console.log(`Found registration with alternative ID format: ${alternativeFormatRegistration.registrationId}`);
+          return res.json({ success: true, registration: alternativeFormatRegistration });
+        }
+        
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Registration not found with ID: ' + registrationId,
+          availableIds: registrations.slice(0, 5).map(r => r.registrationId) // Only send first 5 for privacy
+        });
+      }
+    }
+    
+    // If no ID provided, return all registrations (for admin use)
     console.log(`Returning ${registrations.length} registrations from Edge Config`);
     res.json({ success: true, registrations });
   } catch (error) {
@@ -914,30 +979,106 @@ app.delete('/delete-passover-registration/:id', async (req, res) => {
 // Get registration by ID
 app.get('/registration/:id', async (req, res) => {
   try {
+    // Log request details for debugging
+    console.log('Single registration retrieval request:', {
+      registrationId: req.params.id,
+      path: req.path,
+      headers: req.headers.host,
+      referrer: req.headers.referer || 'none'
+    });
+    
     // Check if Edge Config is available
     if (!isEdgeConfigAvailable) {
-      return res.status(503).json({
-        success: false,
-        message: 'Registration retrieval is unavailable - Edge Config is required'
-      });
+      console.warn('Edge Config unavailable during individual registration retrieval');
+      
+      // Try to initialize it on demand
+      try {
+        const initialized = await testEdgeConfig(3);
+        if (!initialized) {
+          console.error('Failed to initialize Edge Config for individual registration retrieval');
+          return res.status(503).json({
+            success: false,
+            message: 'Registration data temporarily unavailable. Please try again in a few minutes.'
+          });
+        }
+      } catch (initError) {
+        console.error('Error initializing Edge Config during individual retrieval:', initError);
+        return res.status(503).json({
+          success: false, 
+          message: 'Registration system is experiencing technical difficulties'
+        });
+      }
     }
     
     const registrationId = req.params.id;
     
-    // Get all registrations
-    const registrations = await getRegistrations();
+    // Get all registrations with retry logic
+    let registrations;
+    let getAttempts = 3;
     
-    // Find the requested registration
-    const registration = registrations.find(reg => reg.registrationId === registrationId);
+    while (getAttempts > 0) {
+      try {
+        console.log(`Retrieving registrations for ID lookup (attempt ${4-getAttempts}/3)...`);
+        registrations = await getRegistrations();
+        console.log(`Retrieved ${registrations.length} registrations to find ID ${registrationId}`);
+        break; // Success, exit the loop
+      } catch (getError) {
+        getAttempts--;
+        if (getAttempts === 0) {
+          console.error('Failed to retrieve registrations after multiple attempts:', getError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to access registration data. Please try again in a few minutes.'
+          });
+        }
+        
+        console.log(`Error retrieving registrations, ${getAttempts} attempts remaining:`, getError.message);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    // Look for exact match first
+    let registration = registrations.find(reg => reg.registrationId === registrationId);
+    
+    // If not found, try more flexible matching
+    if (!registration) {
+      console.log(`No exact match found for ID ${registrationId}, trying flexible matching`);
+      
+      // Try without hyphens, different capitalization, etc.
+      registration = registrations.find(reg => {
+        if (!reg.registrationId) return false;
+        
+        // Compare without hyphens
+        const normalizedRequestId = registrationId.replace(/[-]/g, '').toLowerCase();
+        const normalizedStoredId = reg.registrationId.replace(/[-]/g, '').toLowerCase();
+        
+        return normalizedRequestId === normalizedStoredId;
+      });
+    }
     
     if (registration) {
+      console.log(`Found registration for ${registration.firstName} ${registration.lastName}`);
       res.json({ success: true, registration });
     } else {
-      res.status(404).json({ success: false, message: 'Registration not found' });
+      console.warn(`Registration with ID ${registrationId} not found in ${registrations.length} registrations`);
+      
+      // Log available IDs for debugging
+      const availableIds = registrations.map(r => r.registrationId || 'undefined').slice(0, 5);
+      console.log(`First 5 available IDs: ${availableIds.join(', ')}`);
+      
+      res.status(404).json({ 
+        success: false, 
+        message: 'Registration not found',
+        registrationId: registrationId
+      });
     }
   } catch (error) {
-    console.error('Error retrieving registration:', error);
-    res.status(500).json({ success: false, message: 'Failed to retrieve registration' });
+    console.error('Error retrieving individual registration:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to retrieve registration: ' + error.message 
+    });
   }
 });
 
@@ -1180,6 +1321,103 @@ app.post('/stripe-webhook', bodyParser.raw({ type: 'application/json' }), async 
   } catch (error) {
     console.error('Webhook error:', error);
     res.status(400).send(`Webhook Error: ${error.message}`);
+  }
+});
+
+// Add an API version of the get registrations endpoint for better compatibility
+app.get('/api/get-passover-registrations', async (req, res) => {
+  console.log('API route for get-passover-registrations, forwarding request...');
+  
+  try {
+    // Check if Edge Config is available
+    if (!isEdgeConfigAvailable) {
+      console.warn('Edge Config unavailable during API registration retrieval');
+      
+      // Try to initialize it on demand
+      try {
+        const initialized = await testEdgeConfig(3);
+        if (!initialized) {
+          console.error('Failed to initialize Edge Config for API registration retrieval');
+          return res.status(503).json({
+            success: false,
+            message: 'Registration retrieval is temporarily unavailable. Please try again in a few minutes.'
+          });
+        }
+      } catch (initError) {
+        console.error('Error initializing Edge Config during API retrieval:', initError);
+        return res.status(503).json({
+          success: false, 
+          message: 'Registration system is experiencing technical difficulties'
+        });
+      }
+    }
+    
+    // Get registrations from Edge Config with retries
+    let registrations;
+    let getAttempts = 3;
+    
+    while (getAttempts > 0) {
+      try {
+        console.log(`API: Retrieving registrations for query (attempt ${4-getAttempts}/3)...`);
+        registrations = await getRegistrations();
+        console.log(`API: Retrieved ${registrations.length} registrations for filtering`);
+        break; // Success, exit the loop
+      } catch (getError) {
+        getAttempts--;
+        if (getAttempts === 0) {
+          console.error('API: Failed to retrieve registrations after multiple attempts:', getError);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to access registration data. Please try again in a few minutes.'
+          });
+        }
+        
+        console.log(`API: Error retrieving registrations, ${getAttempts} attempts remaining:`, getError.message);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    // Get a single registration if ID is provided
+    const registrationId = req.query.id;
+    if (registrationId) {
+      console.log(`API: Looking for registration with ID: ${registrationId}`);
+      
+      const registration = registrations.find(reg => reg.registrationId === registrationId);
+      if (registration) {
+        console.log(`API: Found registration for ${registration.firstName} ${registration.lastName}`);
+        return res.json({ success: true, registration });
+      } else {
+        console.warn(`API: Registration with ID ${registrationId} not found in ${registrations.length} registrations`);
+        
+        // Try to handle common ID format variations
+        const alternativeFormatRegistration = registrations.find(reg => {
+          if (!reg.registrationId) return false;
+          return reg.registrationId.replace(/-/g, '') === registrationId.replace(/-/g, '') || 
+                 reg.registrationId.toLowerCase() === registrationId.toLowerCase();
+        });
+        
+        if (alternativeFormatRegistration) {
+          console.log(`API: Found registration with alternative ID format: ${alternativeFormatRegistration.registrationId}`);
+          return res.json({ success: true, registration: alternativeFormatRegistration });
+        }
+        
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Registration not found with ID: ' + registrationId
+        });
+      }
+    }
+    
+    // If no ID provided, return all registrations (for admin use)
+    console.log(`API: Returning ${registrations.length} registrations from Edge Config`);
+    res.json({ success: true, registrations });
+  } catch (error) {
+    console.error('API: Error getting registrations:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Failed to retrieve registrations from API endpoint'
+    });
   }
 });
 
