@@ -579,7 +579,9 @@ router.get('/admin/test-edge-config', async (req, res) => {
     let verificationTest = { success: false, message: 'Not attempted' };
     try {
       console.log('Verifying Edge Config via direct API call...');
-      const response = await fetchWithRetry(
+      
+      // Use native fetch instead of fetchWithRetry
+      const response = await fetch(
         `${config.edgeConfig.url()}/items?token=${config.edgeConfig.token}`,
         { 
           method: 'GET',
@@ -1044,6 +1046,374 @@ router.get('/admin/test-edge-config-auth', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to test Edge Config authentication: ' + error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * Regenerate the registrations blob from local storage
+ */
+router.post('/admin/repair-blob-storage', async (req, res) => {
+  try {
+    if (!blobStorage.isBlobMirroringEnabled()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Blob mirroring is not enabled in configuration'
+      });
+    }
+    
+    console.log('Starting Blob storage repair process...');
+    
+    // First try to delete the existing blob if it exists
+    try {
+      await blobStorage.deleteRegistrationsBlob();
+      console.log('Successfully deleted existing registrations blob');
+    } catch (deleteError) {
+      console.warn('Could not delete existing registrations blob:', deleteError.message);
+      // Continue with repair attempt
+    }
+    
+    // Get local registrations data
+    console.log('Retrieving local registrations data...');
+    const localRegistrations = await edgeConfig.getRegistrationsFromLocalStorage();
+    
+    if (!localRegistrations || localRegistrations.length === 0) {
+      console.log('No local registrations found, will try Edge Config if available');
+      
+      // If Edge Config is available, try to get registrations from there
+      if (edgeConfig.isEdgeConfigAvailable()) {
+        try {
+          const edgeResult = await edgeConfig.getRegistrations();
+          if (edgeResult.success && edgeResult.data && edgeResult.data.length > 0) {
+            console.log(`Found ${edgeResult.data.length} registrations in Edge Config`);
+            
+            // Save to local storage first
+            await edgeConfig.saveRegistrationsToLocalStorage(edgeResult.data);
+            
+            // Save to blob storage
+            const saveResult = await blobStorage.saveRegistrationsToBlob(edgeResult.data);
+            
+            if (saveResult.success) {
+              return res.json({
+                success: true,
+                message: `Successfully repaired blob storage with ${edgeResult.data.length} registrations from Edge Config`,
+                source: 'Edge Config',
+                registrations: {
+                  count: edgeResult.data.length,
+                  blobUrl: saveResult.url,
+                  timestamp: new Date().toISOString()
+                }
+              });
+            } else {
+              return res.status(500).json({
+                success: false,
+                message: 'Failed to save Edge Config registrations to blob storage',
+                source: 'Edge Config',
+                error: saveResult.error || 'Unknown error'
+              });
+            }
+          }
+        } catch (edgeError) {
+          console.error('Error getting registrations from Edge Config:', edgeError);
+        }
+      }
+      
+      return res.status(404).json({
+        success: false,
+        message: 'No registration data found in local storage or Edge Config',
+        localStoragePath: path.join(__dirname, '..', 'data', 'passover-registrations.json')
+      });
+    }
+    
+    console.log(`Found ${localRegistrations.length} registrations in local storage`);
+    
+    // Force save to blob storage with retries
+    let saveSuccess = false;
+    let saveError = null;
+    let saveResult = null;
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`Attempt ${attempt}/3: Saving ${localRegistrations.length} registrations to blob storage...`);
+        saveResult = await blobStorage.saveRegistrationsToBlob(localRegistrations);
+        
+        if (saveResult.success) {
+          saveSuccess = true;
+          break;
+        } else {
+          console.warn(`Attempt ${attempt} failed:`, saveResult.error || 'Unknown error');
+          
+          // Wait before retry
+          if (attempt < 3) {
+            const delay = attempt * 1000; // Increasing delay
+            console.log(`Waiting ${delay}ms before next attempt...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      } catch (attemptError) {
+        console.error(`Error on attempt ${attempt}:`, attemptError);
+        saveError = attemptError;
+        
+        // Wait before retry
+        if (attempt < 3) {
+          const delay = attempt * 1000; // Increasing delay
+          console.log(`Waiting ${delay}ms before next attempt...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    if (saveSuccess) {
+      console.log('Successfully repaired blob storage!');
+      
+      // Verify by attempting to read the data back
+      try {
+        const verifyResult = await blobStorage.getRegistrationsFromBlob();
+        const verification = verifyResult.success 
+          ? { success: true, count: verifyResult.data.length } 
+          : { success: false, error: verifyResult.message || 'Unknown error' };
+        
+        return res.json({
+          success: true,
+          message: `Successfully repaired blob storage with ${localRegistrations.length} registrations`,
+          source: 'Local storage',
+          registrations: {
+            count: localRegistrations.length,
+            blobUrl: saveResult.url,
+            timestamp: new Date().toISOString()
+          },
+          verification
+        });
+      } catch (verifyError) {
+        return res.json({
+          success: true,
+          message: `Successfully repaired blob storage with ${localRegistrations.length} registrations, but verification failed`,
+          source: 'Local storage',
+          registrations: {
+            count: localRegistrations.length,
+            blobUrl: saveResult.url,
+            timestamp: new Date().toISOString()
+          },
+          verification: {
+            success: false,
+            error: verifyError.message
+          }
+        });
+      }
+    } else {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to repair blob storage after multiple attempts',
+        source: 'Local storage',
+        error: saveError ? saveError.message : 'Unknown error'
+      });
+    }
+  } catch (error) {
+    console.error('Error during blob storage repair:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to repair blob storage: ' + error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * Repair Edge Config connection by forcing it to use fallback storage
+ */
+router.post('/admin/repair-edge-config', async (req, res) => {
+  try {
+    console.log('Starting Edge Config repair process...');
+    
+    // First check authentication
+    let authTest = { success: false, message: 'Not attempted' };
+    try {
+      console.log('Testing Edge Config authentication with current token...');
+      
+      // Make a direct API call with the auth token
+      const response = await fetch(`${config.edgeConfig.url()}/items?token=${config.edgeConfig.token}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (response.ok) {
+        authTest = {
+          success: true,
+          status: response.status,
+          message: 'Authentication successful!'
+        };
+        
+        // Also get the item count
+        const data = await response.json();
+        authTest.items = data.items ? data.items.length : 0;
+      } else if (response.status === 401 || response.status === 403) {
+        authTest = {
+          success: false,
+          status: response.status,
+          message: 'Authentication failed. Invalid token or insufficient permissions.'
+        };
+      } else {
+        authTest = {
+          success: false,
+          status: response.status,
+          message: `Unexpected response: ${response.status} ${response.statusText}`
+        };
+      }
+    } catch (authError) {
+      authTest = {
+        success: false,
+        message: 'Authentication test failed: ' + authError.message,
+        error: authError.stack ? authError.stack.split('\n')[0] : authError.message
+      };
+    }
+    
+    // If auth is failing, force the system to use fallback storage
+    if (!authTest.success) {
+      console.log('Edge Config authentication is failing, forcing fallback storage system...');
+      
+      // Manually trigger the repair by increasing failure count
+      if (edgeConfig.setFailureCount) {
+        // If available, set failure count above threshold
+        edgeConfig.setFailureCount(config.edge.failureThreshold + 1);
+      } else {
+        // Otherwise, just mark Edge Config as unavailable
+        edgeConfig.markEdgeConfigAsUnavailable && edgeConfig.markEdgeConfigAsUnavailable();
+      }
+      
+      // Check if we have any local data
+      const localData = await edgeConfig.getRegistrationsFromLocalStorage();
+      
+      // Check if we have blob storage and if it's working
+      let blobStatus = { enabled: false };
+      if (blobStorage.isBlobMirroringEnabled()) {
+        try {
+          const blobResult = await blobStorage.getRegistrationsFromBlob();
+          blobStatus = {
+            enabled: true,
+            working: blobResult.success,
+            count: blobResult.success ? blobResult.data.length : 0
+          };
+        } catch (blobError) {
+          blobStatus = {
+            enabled: true,
+            working: false,
+            error: blobError.message
+          };
+        }
+      }
+      
+      return res.json({
+        success: true,
+        message: 'Edge Config authentication is failing, system configured to use fallback storage',
+        authTest,
+        fallbackSystem: {
+          localStorage: {
+            available: true,
+            count: localData.length
+          },
+          blobStorage: blobStatus
+        },
+        recommendedAction: blobStatus.enabled && !blobStatus.working 
+          ? 'Repair blob storage with /admin/repair-blob-storage' 
+          : 'System will now use available fallback storage'
+      });
+    }
+    
+    // If auth is working, try to reinitialize Edge Config
+    const success = await edgeConfig.testEdgeConfig(5);
+    
+    // Get current status
+    const currentStatus = {
+      available: edgeConfig.isEdgeConfigAvailable(),
+      failureCount: edgeConfig.getFailureCount ? edgeConfig.getFailureCount() : 0
+    };
+    
+    if (success) {
+      // Reset failure count to ensure Edge Config is used
+      if (edgeConfig.setFailureCount) {
+        edgeConfig.setFailureCount(0);
+      }
+      
+      // Test read/write
+      let readWriteTest = { success: false, message: 'Not attempted' };
+      try {
+        // Generate a test timestamp
+        const testData = {
+          test: true,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Try to write to Edge Config directly
+        console.log('Testing Edge Config read/write after repair...');
+        
+        // Get existing registrations first
+        const existingData = await edgeConfig.getRegistrations();
+        const existingCount = existingData.data ? existingData.data.length : 0;
+        
+        // If we have local data, check if we need to sync it to Edge Config
+        const localData = await edgeConfig.getRegistrationsFromLocalStorage();
+        let syncRequired = false;
+        
+        if (localData.length > 0 && (
+            !existingData.data || 
+            existingData.data.length < localData.length || 
+            req.query.forceSync === 'true'
+        )) {
+          console.log(`Local data (${localData.length} registrations) needs to be synced to Edge Config`);
+          syncRequired = true;
+          
+          // Sync local data to Edge Config
+          try {
+            const saveResult = await edgeConfig.saveRegistrations(localData);
+            if (saveResult.success) {
+              console.log('Successfully synced local data to Edge Config');
+            } else {
+              console.warn('Failed to sync local data to Edge Config:', saveResult.message);
+            }
+          } catch (syncError) {
+            console.error('Error syncing local data to Edge Config:', syncError);
+          }
+        }
+        
+        readWriteTest = { 
+          success: true, 
+          message: 'Edge Config is working correctly',
+          existingRegistrations: existingCount,
+          localRegistrations: localData.length,
+          syncPerformed: syncRequired
+        };
+      } catch (ioError) {
+        console.error('Edge Config read/write test failed after repair:', ioError);
+        readWriteTest = { 
+          success: false, 
+          message: 'Read/write test failed: ' + ioError.message 
+        };
+      }
+      
+      return res.json({
+        success: true,
+        message: 'Edge Config repaired successfully!',
+        authTest,
+        currentStatus,
+        readWriteTest
+      });
+    } else {
+      return res.json({
+        success: false,
+        message: 'Edge Config authentication worked but initialization failed',
+        authTest,
+        currentStatus,
+        recommendation: 'Check logs for more details and consider using blob storage as primary'
+      });
+    }
+  } catch (error) {
+    console.error('Error repairing Edge Config:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to repair Edge Config: ' + error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }

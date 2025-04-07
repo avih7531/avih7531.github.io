@@ -23,7 +23,7 @@ const config = {
   
   // Vercel Blob storage settings
   blob: {
-    enabled: process.env.BLOB_MIRROR_ENABLED === '1' || false,
+    enabled: process.env.BLOB_MIRROR_ENABLED === '1' || true,
     storeId: process.env.BLOB_STORE_ID || 'store_5G8YAnelpqAcRsbj',
     baseUrl: process.env.BLOB_BASE_URL || 'https://5g8yanelpqacrsbj.public.blob.vercel-storage.com',
     token: process.env.BLOB_READ_WRITE_TOKEN || 'vercel_blob_rw_5G8YAnelpqAcRsbj_GFs9WgSFvELbVTW2QjBzHiNTzEYqHn',

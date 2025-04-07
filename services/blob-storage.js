@@ -85,26 +85,83 @@ async function getRegistrationsFromBlob() {
     
     if (!blobFile) {
       console.log('No registrations blob found in storage');
-      return { success: false, data: [] };
+      return { success: false, data: [], message: 'No registrations blob found' };
     }
+    
+    console.log(`Found blob: ${blobFile.pathname}, size: ${blobFile.size}, uploaded: ${blobFile.uploadedAt}`);
     
     // Get the blob file
     const blob = await get(config.blob.filename, { ...blobOptions });
     
     if (!blob) {
       console.log('Failed to fetch registrations blob');
-      return { success: false, data: [] };
+      return { success: false, data: [], message: 'Failed to fetch registrations blob' };
     }
     
     // Download and parse JSON
-    const response = await fetch(blob.url);
-    const data = await response.json();
-    
-    console.log(`Successfully fetched ${data.length} registrations from Blob storage`);
-    return { success: true, data };
+    try {
+      console.log(`Downloading blob from URL: ${blob.url}`);
+      const response = await fetch(blob.url);
+      
+      if (!response.ok) {
+        console.error(`Failed to download blob: ${response.status} ${response.statusText}`);
+        return { 
+          success: false, 
+          data: [], 
+          message: `HTTP error when downloading blob: ${response.status} ${response.statusText}` 
+        };
+      }
+      
+      const text = await response.text();
+      console.log(`Received blob content (length: ${text.length})`);
+      
+      // Check if the content is valid JSON
+      try {
+        if (!text || text.trim() === '') {
+          console.error('Blob content is empty');
+          return { success: false, data: [], message: 'Blob content is empty' };
+        }
+        
+        // Try to parse the JSON
+        const data = JSON.parse(text);
+        
+        // Ensure we have an array
+        if (!Array.isArray(data)) {
+          console.error('Blob content is not an array');
+          return { 
+            success: false, 
+            data: [], 
+            message: 'Blob content is not an array',
+            contentType: typeof data
+          };
+        }
+        
+        console.log(`Successfully parsed JSON, found ${data.length} registrations`);
+        return { success: true, data };
+      } catch (parseError) {
+        console.error('Error parsing JSON from blob:', parseError);
+        return { 
+          success: false, 
+          data: [], 
+          message: `Error parsing JSON: ${parseError.message}`,
+          contentSample: text.length > 100 ? text.substring(0, 100) + '...' : text
+        };
+      }
+    } catch (fetchError) {
+      console.error('Error fetching blob content:', fetchError);
+      return { 
+        success: false, 
+        data: [], 
+        message: `Error fetching blob: ${fetchError.message}` 
+      };
+    }
   } catch (err) {
     console.error('Error fetching registrations from Blob storage:', err);
-    return { success: false, data: [] };
+    return { 
+      success: false, 
+      data: [], 
+      message: `Error in getRegistrationsFromBlob: ${err.message}` 
+    };
   }
 }
 

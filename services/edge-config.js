@@ -954,6 +954,36 @@ async function getTestKey(key) {
   }
 }
 
+/**
+ * Manually set the Edge Config failure count
+ * @param {number} count - The new failure count
+ */
+function setFailureCount(count) {
+  console.log(`Manually setting Edge Config failure count to ${count}`);
+  edgeConfigFailureCount = count;
+  
+  // If count is high, mark as unavailable
+  if (count >= EDGE_CONFIG_FAILURE_THRESHOLD) {
+    edgeConfigAvailable = false;
+    console.log('Marking Edge Config as unavailable due to high failure count');
+  } else if (count === 0) {
+    // If count is reset, try to mark as available
+    if (edgeConfigClient) {
+      edgeConfigAvailable = true;
+      console.log('Marking Edge Config as available after failure count reset');
+    }
+  }
+}
+
+/**
+ * Manually mark Edge Config as unavailable
+ */
+function markEdgeConfigAsUnavailable() {
+  console.log('Manually marking Edge Config as unavailable');
+  edgeConfigAvailable = false;
+  edgeConfigFailureCount = EDGE_CONFIG_FAILURE_THRESHOLD;
+}
+
 module.exports = {
   initEdgeConfigClient,
   getRegistrations,
@@ -967,5 +997,7 @@ module.exports = {
   getRegistrationsFromLocalStorage,
   saveRegistrationsToLocalStorage,
   saveTestKey,
-  getTestKey
+  getTestKey,
+  setFailureCount,
+  markEdgeConfigAsUnavailable
 }; 
