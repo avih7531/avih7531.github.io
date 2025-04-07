@@ -218,11 +218,121 @@ function getRegistrationBlobUrl() {
   return getBlobUrl(config.blob.filename);
 }
 
+/**
+ * Save a test blob for connectivity testing
+ * @param {string} filename - Name of the file to save
+ * @param {any} data - Data to save
+ * @returns {Promise<{success: boolean, url: string|null}>} - Result of the save
+ */
+async function saveTestBlob(filename, data) {
+  if (!isBlobMirroringEnabled()) {
+    console.log('Blob mirroring is disabled, skipping test save to blob storage');
+    return { success: false, url: null, message: 'Blob mirroring is disabled' };
+  }
+
+  try {
+    console.log(`Saving test data to Blob storage as ${filename}...`);
+    
+    // Convert data to JSON string
+    const dataJson = JSON.stringify(data, null, 2);
+    
+    // Upload to Vercel Blob
+    const blob = await put(filename, dataJson, {
+      contentType: 'application/json', 
+      access: 'public',
+      ...blobOptions
+    });
+    
+    console.log(`Successfully saved test data to Blob storage at: ${blob.url}`);
+    
+    return { success: true, url: blob.url, message: 'Successfully saved test data' };
+  } catch (err) {
+    console.error('Error saving test data to Blob storage:', err);
+    return { 
+      success: false, 
+      url: null, 
+      message: 'Error saving test data: ' + err.message,
+      error: err.message
+    };
+  }
+}
+
+/**
+ * Get a test blob for connectivity testing
+ * @param {string} filename - Name of the file to retrieve
+ * @returns {Promise<{data: any, success: boolean}>} - Test data if successful
+ */
+async function getTestBlob(filename) {
+  if (!isBlobMirroringEnabled()) {
+    console.log('Blob mirroring is disabled, skipping test fetch from blob storage');
+    return { success: false, data: null, message: 'Blob mirroring is disabled' };
+  }
+
+  try {
+    console.log(`Attempting to fetch test data from Blob storage (${filename})...`);
+    
+    // Get the blob file
+    const blob = await get(filename, { ...blobOptions });
+    
+    if (!blob) {
+      console.log('Failed to fetch test blob');
+      return { success: false, data: null, message: 'Test blob not found' };
+    }
+    
+    // Download and parse JSON
+    const response = await fetch(blob.url);
+    const data = await response.json();
+    
+    console.log('Successfully fetched test data from Blob storage');
+    return { success: true, data, message: 'Successfully retrieved test data' };
+  } catch (err) {
+    console.error('Error fetching test data from Blob storage:', err);
+    return { 
+      success: false, 
+      data: null, 
+      message: 'Error fetching test data: ' + err.message,
+      error: err.message
+    };
+  }
+}
+
+/**
+ * List all blobs in the store
+ * @returns {Promise<{blobs: Array, success: boolean}>} - List of blobs
+ */
+async function listBlobs() {
+  if (!isBlobMirroringEnabled()) {
+    console.log('Blob mirroring is disabled, skipping blob listing');
+    return { success: false, blobs: [], message: 'Blob mirroring is disabled' };
+  }
+
+  try {
+    console.log('Listing blobs in storage...');
+    
+    // List all blobs
+    const listResult = await list({ ...blobOptions });
+    
+    console.log(`Found ${listResult.blobs.length} blobs in storage`);
+    return { success: true, blobs: listResult.blobs, message: 'Successfully listed blobs' };
+  } catch (err) {
+    console.error('Error listing blobs from storage:', err);
+    return { 
+      success: false, 
+      blobs: [], 
+      message: 'Error listing blobs: ' + err.message,
+      error: err.message
+    };
+  }
+}
+
 module.exports = {
   saveRegistrationsToBlob,
   getRegistrationsFromBlob,
   syncRegistrationsToBlob,
   deleteRegistrationsBlob,
   isBlobMirroringEnabled,
-  getRegistrationBlobUrl
+  getRegistrationBlobUrl,
+  saveTestBlob,
+  getTestBlob,
+  listBlobs
 }; 

@@ -455,4 +455,218 @@ router.get('/admin/health', async (req, res) => {
   }
 });
 
+/**
+ * Test and initialize Edge Config
+ */
+router.get('/admin/test-edge-config', async (req, res) => {
+  try {
+    console.log('Testing Edge Config connectivity...');
+    
+    // First get current status
+    const initialStatus = {
+      available: edgeConfig.isEdgeConfigAvailable(),
+      failureCount: edgeConfig.getFailureCount ? edgeConfig.getFailureCount() : 0
+    };
+    
+    // Try to initialize with extended attempts
+    console.log('Attempting to initialize Edge Config...');
+    const success = await edgeConfig.testEdgeConfig(5);
+    
+    // Get updated status after attempt
+    const currentStatus = {
+      available: edgeConfig.isEdgeConfigAvailable(),
+      failureCount: edgeConfig.getFailureCount ? edgeConfig.getFailureCount() : 0
+    };
+    
+    // Check environment variables
+    const envStatus = {
+      EDGE_CONFIG: process.env.EDGE_CONFIG ? 'Set' : 'Not set',
+      EDGE_CONFIG_ID: process.env.EDGE_CONFIG_ID ? 'Set' : 'Not set',
+      EDGE_CONFIG_TOKEN: process.env.EDGE_CONFIG_TOKEN ? 'Set' : 'Not set',
+      // Show masked token to verify it's correct without revealing full token
+      tokenPreview: process.env.EDGE_CONFIG_TOKEN ? 
+        `${process.env.EDGE_CONFIG_TOKEN.substring(0, 4)}...${process.env.EDGE_CONFIG_TOKEN.substring(process.env.EDGE_CONFIG_TOKEN.length - 4)}` : 
+        'N/A'
+    };
+    
+    // Try to save and get some test data for verification
+    let readWriteTest = { success: false, message: 'Not attempted' };
+    
+    if (success) {
+      try {
+        // Generate a test timestamp
+        const testData = {
+          test: true,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Try to write to Edge Config directly
+        console.log('Testing Edge Config read/write...');
+        
+        // Get existing registrations first
+        const existingData = await edgeConfig.getRegistrations();
+        const existingCount = existingData.data ? existingData.data.length : 0;
+        
+        // Set the test key
+        await edgeConfig.saveTestKey('test_connectivity', testData);
+        
+        // Read back the test key
+        const readResult = await edgeConfig.getTestKey('test_connectivity');
+        
+        if (readResult && readResult.timestamp === testData.timestamp) {
+          readWriteTest = { 
+            success: true, 
+            message: 'Test key successfully written and read',
+            existingRegistrations: existingCount
+          };
+        } else {
+          readWriteTest = { 
+            success: false, 
+            message: 'Test key write succeeded but read failed or values did not match',
+            readResult: readResult
+          };
+        }
+      } catch (ioError) {
+        console.error('Edge Config read/write test failed:', ioError);
+        readWriteTest = { 
+          success: false, 
+          message: 'Read/write test failed: ' + ioError.message 
+        };
+      }
+    }
+    
+    res.json({
+      timestamp: new Date().toISOString(),
+      initializationSuccess: success,
+      initialStatus,
+      currentStatus,
+      environment: envStatus,
+      readWriteTest,
+      connectionString: config.edgeConfig.connectionString().replace(/token=[^&]+/, 'token=REDACTED'),
+      config: {
+        id: config.edgeConfig.id,
+        url: config.edgeConfig.url()
+      }
+    });
+  } catch (error) {
+    console.error('Error testing Edge Config:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test Edge Config: ' + error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * Test Blob storage connectivity
+ */
+router.get('/admin/test-blob-storage', async (req, res) => {
+  try {
+    console.log('Testing Blob storage connectivity...');
+    
+    if (!blobStorage.isBlobMirroringEnabled()) {
+      return res.json({
+        success: false,
+        message: 'Blob storage mirroring is not enabled in configuration',
+        config: {
+          enabled: false,
+          storeId: config.blob.storeId,
+          baseUrl: config.blob.baseUrl,
+          hasToken: !!config.blob.token,
+          tokenPreview: config.blob.token ? 
+            `${config.blob.token.substring(0, 4)}...${config.blob.token.substring(config.blob.token.length - 4)}` : 
+            'N/A'
+        }
+      });
+    }
+    
+    // Test blob write
+    const testData = {
+      test: true,
+      timestamp: new Date().toISOString()
+    };
+    
+    // Try to write a test blob
+    console.log('Testing Blob storage write...');
+    const writeResult = await blobStorage.saveTestBlob('test-connectivity.json', testData);
+    
+    // Try to retrieve and validate it
+    let readResult = { success: false, message: 'Not attempted' };
+    
+    if (writeResult.success) {
+      console.log('Testing Blob storage read...');
+      try {
+        const testBlob = await blobStorage.getTestBlob('test-connectivity.json');
+        
+        if (testBlob.success && testBlob.data.timestamp === testData.timestamp) {
+          readResult = {
+            success: true, 
+            message: 'Successfully read test data',
+            data: testBlob.data
+          };
+        } else {
+          readResult = {
+            success: false,
+            message: 'Blob retrieval succeeded but data did not match',
+            data: testBlob.data
+          };
+        }
+      } catch (readError) {
+        readResult = {
+          success: false,
+          message: 'Failed to read test blob: ' + readError.message
+        };
+      }
+    }
+    
+    // Also check if the registrations blob exists
+    let registrationsBlob = { exists: false };
+    try {
+      const blobList = await blobStorage.listBlobs();
+      const mainBlob = blobList.blobs.find(b => b.pathname === config.blob.filename);
+      
+      if (mainBlob) {
+        registrationsBlob = {
+          exists: true,
+          url: blobStorage.getRegistrationBlobUrl(),
+          size: mainBlob.size,
+          uploadedAt: mainBlob.uploadedAt
+        };
+      }
+    } catch (listError) {
+      registrationsBlob = {
+        exists: false,
+        error: listError.message
+      };
+    }
+    
+    // Return results
+    res.json({
+      timestamp: new Date().toISOString(),
+      enabled: true,
+      writeTest: writeResult,
+      readTest: readResult,
+      registrationsBlob,
+      config: {
+        filename: config.blob.filename,
+        baseUrl: config.blob.baseUrl,
+        storeId: config.blob.storeId,
+        contentType: config.blob.contentType,
+        accessMode: config.blob.accessMode,
+        syncInterval: config.blob.syncInterval
+      }
+    });
+  } catch (error) {
+    console.error('Error testing Blob storage:', error);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test Blob storage: ' + error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
 module.exports = router; 

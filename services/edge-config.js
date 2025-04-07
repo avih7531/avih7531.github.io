@@ -774,6 +774,105 @@ async function getRegistrationCount() {
   }
 }
 
+/**
+ * Save a test key for connectivity testing
+ * @param {string} key - Key to save
+ * @param {any} value - Value to save
+ * @returns {Promise<boolean>} - Whether save was successful
+ */
+async function saveTestKey(key, value) {
+  if (!edgeConfigClient) {
+    // Try to initialize if not already done
+    const initialized = initEdgeConfigClient();
+    if (!initialized) {
+      throw new Error('Unable to initialize Edge Config client for test');
+    }
+  }
+  
+  // First try SDK method
+  try {
+    await edgeConfigClient.set(key, value);
+    console.log(`Successfully saved test key ${key} using SDK`);
+    return true;
+  } catch (sdkError) {
+    console.log(`SDK method failed for test key ${key}, falling back to API:`, sdkError.message);
+    
+    // Fall back to direct API call
+    const updateResponse = await fetchWithRetry(
+      `${config.edgeConfig.url()}/items?token=${config.edgeConfig.token}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          items: [{
+            operation: 'upsert',
+            key: key,
+            value: value
+          }]
+        })
+      }
+    );
+    
+    if (!updateResponse.ok) {
+      const errorText = await updateResponse.text();
+      console.error(`Error saving test key ${key}: ${updateResponse.status} - ${errorText}`);
+      throw new Error(`Failed to save test key: ${updateResponse.status}`);
+    }
+    
+    console.log(`Successfully saved test key ${key} using API`);
+    return true;
+  }
+}
+
+/**
+ * Get a test key for connectivity testing
+ * @param {string} key - Key to get
+ * @returns {Promise<any>} - Value of the key
+ */
+async function getTestKey(key) {
+  if (!edgeConfigClient) {
+    // Try to initialize if not already done
+    const initialized = initEdgeConfigClient();
+    if (!initialized) {
+      throw new Error('Unable to initialize Edge Config client for test');
+    }
+  }
+  
+  // First try SDK method
+  try {
+    const value = await edgeConfigClient.get(key);
+    console.log(`Successfully retrieved test key ${key} using SDK`);
+    return value;
+  } catch (sdkError) {
+    console.log(`SDK method failed for test key ${key}, falling back to API:`, sdkError.message);
+    
+    // Fall back to direct API call
+    const response = await fetchWithRetry(
+      `${config.edgeConfig.url()}/item/${key}?token=${config.edgeConfig.token}`,
+      {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      }
+    );
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`Test key ${key} not found in Edge Config`);
+        return null;
+      }
+      throw new Error(`Edge Config response error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log(`Successfully retrieved test key ${key} using API`);
+    return data;
+  }
+}
+
 module.exports = {
   initEdgeConfigClient,
   getRegistrations,
@@ -785,5 +884,7 @@ module.exports = {
   getFailureCount,
   getRegistrationCount,
   getRegistrationsFromLocalStorage,
-  saveRegistrationsToLocalStorage
+  saveRegistrationsToLocalStorage,
+  saveTestKey,
+  getTestKey
 }; 
