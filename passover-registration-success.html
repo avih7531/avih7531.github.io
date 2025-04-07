@@ -575,13 +575,92 @@
           donationAmount = urlParams.amount;
         }
         
+        // Update the donation display
         document.getElementById('donationAmount').textContent = '$' + donationAmount;
         document.getElementById('donationThanks').style.display = 'block';
         
         // Change the page title to reflect donation
         document.title = 'Registration & Donation Successful - Rejewvenate';
+        
+        // Update the registration with donation information if needed
+        if (registrationId && !registrationData.hasDonated) {
+          try {
+            await updateRegistrationWithDonation(registrationId, donationAmount);
+          } catch (updateError) {
+            console.error('Error updating registration with donation:', updateError);
+          }
+        }
       }
     });
+    
+    // Function to update the registration with donation information
+    async function updateRegistrationWithDonation(registrationId, amount) {
+      if (!registrationId || !amount) return;
+      
+      console.log(`Updating registration ${registrationId} with donation amount ${amount}`);
+      
+      // Convert amount to a number and ensure it's at least $1
+      const numericAmount = parseFloat(amount) || 1.00;
+      
+      try {
+        // Send the update request to the server with retries
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            console.log(`Updating registration with donation, attempt ${attempt + 1}/3`);
+            const response = await fetch('/update-registration-donation', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                registrationId,
+                donationAmount: numericAmount.toFixed(2),
+                stripeSessionId: 'success-page-update' // Marker to indicate this was updated via success page
+              })
+            });
+            
+            if (!response.ok) {
+              // If the server is unavailable, try again
+              if (response.status === 503) {
+                console.warn('Server unavailable, will retry donation update');
+                
+                // Wait before retrying
+                const delay = Math.pow(2, attempt) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+              }
+              
+              // Parse error message from response if possible
+              try {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `Server returned ${response.status}`);
+              } catch (jsonError) {
+                throw new Error(`Server returned ${response.status}`);
+              }
+            }
+            
+            // Update was successful
+            const data = await response.json();
+            console.log('Successfully updated registration with donation:', data);
+            return data;
+          } catch (fetchError) {
+            console.warn(`Attempt ${attempt + 1} failed:`, fetchError);
+            
+            // If this was the last attempt, propagate the error
+            if (attempt === 2) {
+              throw fetchError;
+            }
+            
+            // Wait before retrying
+            const delay = Math.pow(2, attempt) * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to update registration with donation after multiple attempts:', error);
+        throw error;
+      }
+    }
   </script>
 </body>
 
