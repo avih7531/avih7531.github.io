@@ -6,9 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "move-files": "node move-files.js",
-    "setup": "npm install && npm run move-files",
-    "vercel-build": "npm run move-files"
+    "move-files": "echo 'Files already moved to public directory'",
+    "setup": "npm install",
+    "vercel-build": "echo 'Skipping file migration - files already in public directory'"
   },
   "dependencies": {
     "@vercel/edge-config": "^0.4.1",
