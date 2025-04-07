@@ -6,21 +6,8 @@
       "use": "@vercel/node"
     },
     {
-      "src": "*.html",
+      "src": "public/**/*",
       "use": "@vercel/static"
-    },
-    {
-      "src": "*.avif",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "*.css",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "*.js",
-      "use": "@vercel/static",
-      "config": { "excludeFiles": ["server.js"] }
     }
   ],
   "rewrites": [
@@ -35,6 +22,7 @@
     { "source": "/create-passover-checkout-session", "destination": "/server.js" },
     { "source": "/send-contact-form", "destination": "/server.js" },
     { "source": "/stripe-webhook", "destination": "/server.js" },
-    { "source": "/favicon.ico", "destination": "/server.js" }
+    { "source": "/favicon.ico", "destination": "/server.js" },
+    { "source": "/(.*)", "destination": "/server.js" }
   ]
 } 
