@@ -188,33 +188,35 @@
     @keyframes pulse {
       0% {
         box-shadow: 0 4px 12px rgba(75, 181, 67, 0.3);
+        transform: scale(1);
       }
       50% {
         box-shadow: 0 4px 20px rgba(75, 181, 67, 0.5);
+        transform: scale(1.05);
       }
       100% {
         box-shadow: 0 4px 12px rgba(75, 181, 67, 0.3);
+        transform: scale(1);
       }
     }
 
-    .success-icon::before,
-    .success-icon::after {
-      content: '';
-      position: absolute;
-      background-color: white;
-      transition: all 0.3s ease;
-    }
-
-    .success-icon::before {
+    .success-icon svg {
       width: 40px;
-      height: 10px;
-      transform: rotate(45deg) translate(10px, 10px);
+      height: 40px;
+      fill: none;
+      stroke: white;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 100;
+      stroke-dashoffset: 100;
+      animation: dash 1.5s ease-in-out forwards;
     }
 
-    .success-icon::after {
-      width: 20px;
-      height: 10px;
-      transform: rotate(-45deg) translate(-5px, 20px);
+    @keyframes dash {
+      to {
+        stroke-dashoffset: 0;
+      }
     }
 
     h1 {
@@ -370,7 +372,11 @@
   </div>
   
   <div class="success-container">
-    <div class="success-icon"></div>
+    <div class="success-icon">
+      <svg viewBox="0 0 52 52">
+        <path d="M14 27l10 10 16-16"></path>
+      </svg>
+    </div>
     <h1>You're All Set for Passover!</h1>
     <p>Thank you for registering for our Passover Seder. We're excited to celebrate with you!</p>
     <p>A confirmation email has been sent to your email address with all the details.</p>
