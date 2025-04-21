@@ -11,7 +11,7 @@ const CLOSED_HOLIDAYS = [
     'Shavuot'
 ];
 
-function isClosedTime() {
+function getClosureType() {
     const now = new Date();
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     
@@ -19,7 +19,7 @@ function isClosedTime() {
     const hDate = new hebcal.HDate(now);
     
     // Check if today is a holiday when the website should be closed
-    const isHoliday = CLOSED_HOLIDAYS.some(holiday => {
+    const currentHoliday = CLOSED_HOLIDAYS.find(holiday => {
         try {
             const holidayDate = new hebcal.HolidayEvent(holiday, hDate.getFullYear());
             return holidayDate.getDate().isSameDate(hDate);
@@ -28,6 +28,14 @@ function isClosedTime() {
         }
     });
     
+    if (currentHoliday) {
+        return {
+            isClosed: true,
+            type: 'holiday',
+            name: currentHoliday
+        };
+    }
+    
     // Check if it's Friday after sunset or Saturday before sunset
     const isFriday = now.getDay() === 5; // 5 is Friday
     const isSaturday = now.getDay() === 6; // 6 is Saturday
@@ -35,14 +43,26 @@ function isClosedTime() {
     if (isFriday) {
         // Get sunset time for Friday
         const sunset = hebcal.SunTimes.getSunset(now, userTimezone);
-        return now >= sunset || isHoliday;
+        if (now >= sunset) {
+            return {
+                isClosed: true,
+                type: 'shabbat'
+            };
+        }
     } else if (isSaturday) {
         // Get sunset time for Saturday
         const sunset = hebcal.SunTimes.getSunset(now, userTimezone);
-        return now < sunset || isHoliday;
+        if (now < sunset) {
+            return {
+                isClosed: true,
+                type: 'shabbat'
+            };
+        }
     }
     
-    return isHoliday;
+    return {
+        isClosed: false
+    };
 }
 
-module.exports = isClosedTime; 
+module.exports = getClosureType; 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shabbat Shalom - Rejewvenate</title>
+    <title>Shabbat Shalom / Chag Sameach - Rejewvenate</title>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -45,15 +45,31 @@
 </head>
 <body>
     <div class="container">
-        <div class="shabbat-icon">🕯️</div>
-        <h1>Shabbat Shalom / Chag Sameach!</h1>
-        <p>Thank you for visiting our website. We'll be back after Shabbat or the holiday!</p>
-        <p>May you have a peaceful and meaningful Shabbat or holiday.</p>
-        <div>
+        <div class="shabbat-icon" id="main-icon">🕯️</div>
+        <h1 id="greeting">Shabbat Shalom!</h1>
+        <p id="message">Thank you for visiting our website. We'll be back after Shabbat!</p>
+        <p id="wish">May you have a peaceful and meaningful Shabbat.</p>
+        <div id="holiday-icons" style="display: none;">
             <span class="holiday-icon">🎉</span>
             <span class="holiday-icon">🍷</span>
             <span class="holiday-icon">🍞</span>
         </div>
     </div>
+
+    <script>
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const type = urlParams.get('type');
+        const name = urlParams.get('name');
+
+        // Update content based on type
+        if (type === 'holiday') {
+            document.getElementById('main-icon').textContent = '🎉';
+            document.getElementById('greeting').textContent = 'Chag Sameach!';
+            document.getElementById('message').textContent = `Thank you for visiting our website. We'll be back after ${name}!`;
+            document.getElementById('wish').textContent = `May you have a meaningful and joyous ${name}.`;
+            document.getElementById('holiday-icons').style.display = 'block';
+        }
+    </script>
 </body>
 </html> 
