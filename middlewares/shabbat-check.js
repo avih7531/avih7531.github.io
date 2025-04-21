@@ -13,8 +13,12 @@ function shabbatCheck(req, res, next) {
 
   if (closureInfo.isClosed || forceShabbat) {
     // If it's Shabbat/holiday or force_shabbat is true, serve the Shabbat page
-    // Pass the closure type as a query parameter
-    const redirectUrl = `/shabbat.html?type=${closureInfo.type || 'shabbat'}&name=${closureInfo.name || ''}`;
+    // Preserve the original query parameters if force_shabbat is true
+    const type = forceShabbat ? (req.query.type || 'shabbat') : closureInfo.type;
+    const name = forceShabbat ? (req.query.name || '') : closureInfo.name;
+    
+    // Redirect to shabbat.html with the correct parameters
+    const redirectUrl = `/shabbat.html?type=${type}&name=${name}`;
     return res.redirect(redirectUrl);
   }
   
