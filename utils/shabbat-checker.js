@@ -41,18 +41,24 @@ function getClosureType() {
     const isSaturday = now.getDay() === 6; // 6 is Saturday
     
     if (isFriday) {
-        // Get sunset time for Friday
+        // Get sunset time for Friday and add one hour buffer
         const sunset = hebcal.SunTimes.getSunset(now, userTimezone);
-        if (now >= sunset) {
+        const shabbatStart = new Date(sunset);
+        shabbatStart.setHours(shabbatStart.getHours() - 1); // One hour before sunset
+        
+        if (now >= shabbatStart) {
             return {
                 isClosed: true,
                 type: 'shabbat'
             };
         }
     } else if (isSaturday) {
-        // Get sunset time for Saturday
+        // Get sunset time for Saturday and add one hour buffer
         const sunset = hebcal.SunTimes.getSunset(now, userTimezone);
-        if (now < sunset) {
+        const shabbatEnd = new Date(sunset);
+        shabbatEnd.setHours(shabbatEnd.getHours() + 1); // One hour after sunset
+        
+        if (now < shabbatEnd) {
             return {
                 isClosed: true,
                 type: 'shabbat'
