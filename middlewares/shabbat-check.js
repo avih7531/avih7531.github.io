@@ -1,4 +1,4 @@
-const isShabbat = require('../utils/shabbat-checker');
+const isClosedTime = require('../utils/shabbat-checker');
 const path = require('path');
 
 function shabbatCheck(req, res, next) {
@@ -7,8 +7,11 @@ function shabbatCheck(req, res, next) {
     return next();
   }
 
-  if (isShabbat()) {
-    // If it's Shabbat, serve the Shabbat page
+  // Check for force_shabbat query parameter
+  const forceShabbat = req.query.force_shabbat === 'true';
+
+  if (isClosedTime() || forceShabbat) {
+    // If it's Shabbat/holiday or force_shabbat is true, serve the Shabbat page
     return res.sendFile(path.join(__dirname, '../public', 'shabbat.html'));
   }
   

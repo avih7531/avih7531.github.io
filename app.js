@@ -9,6 +9,18 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const cleanJsonResponse = require('./middlewares/json-response');
 const shabbatCheck = require('./middlewares/shabbat-check');
+const hebcal = require('hebcal');
+
+// List of holidays when the website should be closed
+const CLOSED_HOLIDAYS = [
+    'Rosh Hashana',
+    'Yom Kippur',
+    'Sukkot',
+    'Shmini Atzeret',
+    'Simchat Torah',
+    'Pesach',
+    'Shavuot'
+];
 
 // Initialize express app
 const app = express();
@@ -57,6 +69,34 @@ const htmlPages = [
   'donation-success',
   'admin-registrations'
 ];
+
+// Add test route for Shabbat status
+app.get('/shabbat-status', (req, res) => {
+  const isClosedTime = require('./utils/shabbat-checker');
+  const now = new Date();
+  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  
+  // Get Hebrew date
+  const hDate = new hebcal.HDate(now);
+  const currentHolidays = CLOSED_HOLIDAYS.filter(holiday => {
+    try {
+      const holidayDate = new hebcal.HolidayEvent(holiday, hDate.getFullYear());
+      return holidayDate.getDate().isSameDate(hDate);
+    } catch (e) {
+      return false;
+    }
+  });
+  
+  res.json({
+    isClosed: isClosedTime(),
+    currentTime: now.toISOString(),
+    userTimezone: userTimezone,
+    dayOfWeek: now.getDay(),
+    isFriday: now.getDay() === 5,
+    isSaturday: now.getDay() === 6,
+    currentHolidays: currentHolidays
+  });
+});
 
 htmlPages.forEach(page => {
   app.get(`/${page}`, (req, res) => {
