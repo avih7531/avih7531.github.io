@@ -8,6 +8,7 @@ const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
 const cleanJsonResponse = require('./middlewares/json-response');
+const shabbatCheck = require('./middlewares/shabbat-check');
 
 // Initialize express app
 const app = express();
@@ -18,6 +19,7 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cleanJsonResponse);
+app.use(shabbatCheck);
 
 // Static files - explicitly configure both the root public directory and subdirectories
 app.use(express.static(path.join(__dirname, 'public')));
