@@ -33,42 +33,89 @@
             line-height: 1.6;
             margin-bottom: 1.5rem;
         }
-        .shabbat-icon {
+        .main-icon {
             font-size: 3rem;
             margin-bottom: 1rem;
         }
-        .holiday-icon {
+        .holiday-icons {
             font-size: 2rem;
             margin: 0.5rem;
+        }
+        .icons-container {
+            margin-top: 1rem;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="shabbat-icon" id="main-icon">🕯️</div>
+        <div class="main-icon" id="main-icon">🕯️</div>
         <h1 id="greeting">Shabbat Shalom!</h1>
-        <p id="message">Thank you for visiting our website. We'll be back after Shabbat!</p>
+        <p id="message">We'll be back after Shabbat!</p>
         <p id="wish">May you have a peaceful and meaningful Shabbat.</p>
-        <div id="holiday-icons" style="display: none;">
-            <span class="holiday-icon">🎉</span>
-            <span class="holiday-icon">🍷</span>
-            <span class="holiday-icon">🍞</span>
-        </div>
+        <div class="icons-container" id="holiday-icons" style="display: none;"></div>
     </div>
 
     <script>
+        // Holiday-specific configurations
+        const holidayConfigs = {
+            'Rosh Hashana': {
+                mainIcon: '🍎',
+                icons: ['🍯', '🍎', '🎺'],
+                wish: 'May you have a sweet and happy new year.'
+            },
+            'Yom Kippur': {
+                mainIcon: '🕊️',
+                icons: ['🕊️', '📖', '🕯️'],
+                wish: 'May you have an easy and meaningful fast.'
+            },
+            'Sukkot': {
+                mainIcon: '🌿',
+                icons: ['🌿', '🍋', '🎪'],
+                wish: 'May you have a joyous Sukkot in your sukkah.'
+            },
+            'Shmini Atzeret': {
+                mainIcon: '🌧️',
+                icons: ['🌧️', '🕯️', '📖'],
+                wish: 'May you have a meaningful Shmini Atzeret.'
+            },
+            'Simchat Torah': {
+                mainIcon: '📜',
+                icons: ['📜', '🎉', '🕺'],
+                wish: 'May you have a joyous Simchat Torah celebration.'
+            },
+            'Pesach': {
+                mainIcon: '🍷',
+                icons: ['🍷', '🍞', '🥚'],
+                wish: 'May you have a meaningful and joyous Pesach.'
+            },
+            'Shavuot': {
+                mainIcon: '🥛',
+                icons: ['🥛', '🍰', '📖'],
+                wish: 'May you have a meaningful and joyous Shavuot.'
+            }
+        };
+
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const type = urlParams.get('type');
-        const name = urlParams.get('name');
+        const name = decodeURIComponent(urlParams.get('name') || '');
 
         // Update content based on type
-        if (type === 'holiday') {
-            document.getElementById('main-icon').textContent = '🎉';
+        if (type === 'holiday' && name && holidayConfigs[name]) {
+            const config = holidayConfigs[name];
+            document.getElementById('main-icon').textContent = config.mainIcon;
             document.getElementById('greeting').textContent = 'Chag Sameach!';
-            document.getElementById('message').textContent = `Thank you for visiting our website. We'll be back after ${name}!`;
-            document.getElementById('wish').textContent = `May you have a meaningful and joyous ${name}.`;
-            document.getElementById('holiday-icons').style.display = 'block';
+            document.getElementById('message').textContent = `We'll be back after ${name}!`;
+            document.getElementById('wish').textContent = config.wish;
+            
+            const iconsContainer = document.getElementById('holiday-icons');
+            iconsContainer.style.display = 'block';
+            config.icons.forEach(icon => {
+                const span = document.createElement('span');
+                span.className = 'holiday-icons';
+                span.textContent = icon;
+                iconsContainer.appendChild(span);
+            });
         }
     </script>
 </body>

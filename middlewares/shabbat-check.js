@@ -18,7 +18,7 @@ function shabbatCheck(req, res, next) {
     const name = forceShabbat ? (req.query.name || '') : closureInfo.name;
     
     // Redirect to shabbat.html with the correct parameters
-    const redirectUrl = `/shabbat.html?type=${type}&name=${name}`;
+    const redirectUrl = `/shabbat.html?type=${type}&name=${encodeURIComponent(name)}`;
     return res.redirect(redirectUrl);
   }
   
