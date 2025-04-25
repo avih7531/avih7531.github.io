@@ -1,4 +1,4 @@
-const { HebrewCalendar, HDate, Location, Event, flags, CandleLightingEvent } = require('@hebcal/core');
+const { HebrewCalendar, HDate, Location, Event, flags } = require('@hebcal/core');
 
 // List of holidays when the website should be closed
 const CLOSED_HOLIDAYS = [
@@ -28,118 +28,157 @@ const TIMEZONE_COORDS = {
     'Australia/Sydney': { lat: -33.8688, lng: 151.2093, name: 'Sydney' },
     'Pacific/Auckland': { lat: -36.8509, lng: 174.7645, name: 'Auckland' },
     // Default coordinates if timezone not found
-    'default': { lat: 0, lng: 0, name: 'UTC' }
+    'default': { lat: 40.7128, lng: -74.0060, name: 'New York' } // Use New York as default
 };
+
+/**
+ * Gets the user's timezone, with fallbacks for server environments
+ * @returns {string} The timezone string
+ */
+function getUserTimezone() {
+    try {
+        // Try browser API first
+        if (typeof Intl !== 'undefined' && 
+            Intl.DateTimeFormat && 
+            Intl.DateTimeFormat().resolvedOptions) {
+            return Intl.DateTimeFormat().resolvedOptions().timeZone;
+        }
+    } catch (e) {
+        console.error('Error getting timezone from browser:', e);
+    }
+
+    // Fallback: Check environment variables that might have been set
+    if (process.env.TZ) {
+        return process.env.TZ;
+    }
+    
+    // Last resort fallback
+    return 'America/New_York';
+}
+
+/**
+ * Check if today is actually Friday evening or Saturday
+ * @returns {boolean} True if it's currently Shabbat
+ */
+function isActuallyShabbat() {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
+    const hours = now.getHours();
+    
+    // Check development/testing environment
+    if (process.env.NODE_ENV === 'development' && process.env.SIMULATE_SHABBAT === 'true') {
+        return true;
+    }
+    
+    // Friday after sunset (approximated as 6 PM / 18:00) or Saturday before havdalah (approximated as 8 PM / 20:00)
+    // This is just a basic fallback if all other checks fail
+    if ((dayOfWeek === 5 && hours >= 18) || (dayOfWeek === 6 && hours < 20)) {
+        return true;
+    }
+    
+    return false;
+}
 
 function getClosureType() {
     try {
         const now = new Date();
-        const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        console.log(`User timezone detected: ${userTimezone}`);
         
-        // Get coordinates for the user's timezone, or use default if not found
-        const coords = TIMEZONE_COORDS[userTimezone] || TIMEZONE_COORDS.default;
-        console.log(`Using coordinates for ${coords.name}: ${coords.lat}, ${coords.lng}`);
-        
-        // Create a location based on the timezone's city coordinates
-        const location = new Location(
-            coords.lat, 
-            coords.lng, 
-            false, // Use elevation for more accurate times?
-            userTimezone, 
-            coords.name
-        );
-        
-        // Get today's Hebrew date
-        const hDate = new HDate(now);
-        
-        // Create options for HebrewCalendar
-        const options = {
-            start: now,
-            end: now,
-            location: location,
-            candlelighting: true,
-            havdalahMins: 42,
-            sedrot: true,
-            noMinorFast: false,
-            noRoshChodesh: true,
-            noSpecialShabbat: true,
-            il: coords.name === 'Jerusalem' || coords.name === 'Tel Aviv', // Set to true if in Israel
-        };
-        
-        // Get events for today
-        const events = HebrewCalendar.calendar(options);
-        console.log(`Found ${events.length} events for today`);
-        
-        // Check for candle lighting directly
-        let candleLightingEvent = null;
-        
-        for (const event of events) {
-            console.log(`Checking event: ${event.getDesc()}`);
-            
-            // Check if event is an instance of CandleLightingEvent
-            if (event instanceof CandleLightingEvent) {
-                console.log('Found candle lighting event!');
-                candleLightingEvent = event;
-            }
-            
-            // Check if it's a major holiday
-            if (CLOSED_HOLIDAYS.some(holiday => event.getDesc().includes(holiday))) {
-                console.log(`Holiday detected: ${event.getDesc()}`);
-                return {
-                    isClosed: true,
-                    type: 'holiday',
-                    name: event.getDesc()
-                };
-            }
-            
-            // Check if it's Shabbat related
-            if (event.getFlags() & flags.LIGHT_CANDLES || 
-                event.getFlags() & flags.LIGHT_CANDLES_TZEIS || 
-                event.getDesc() === 'Havdalah') {
+        // Get timezone with fallbacks for server environment
+        const userTimezone = getUserTimezone();
                 
-                console.log(`Shabbat event detected: ${event.getDesc()}`);
+        // If not obviously Shabbat, try the more precise method
+        try {
+            // Get coordinates for the user's timezone, or use default
+            const coords = TIMEZONE_COORDS[userTimezone] || TIMEZONE_COORDS.default;
+            
+            // Create a location based on the timezone's city coordinates
+            const location = new Location(
+                coords.lat, 
+                coords.lng, 
+                false,
+                userTimezone, 
+                coords.name
+            );
+            
+            // Get today's Hebrew date
+            const hDate = new HDate(now);
+            
+            // Create options for HebrewCalendar
+            const options = {
+                start: now,
+                end: now,
+                location: location,
+                candlelighting: true,
+                havdalahMins: 42,
+                sedrot: false,
+                noMinorFast: true,
+                noRoshChodesh: true,
+                noSpecialShabbat: true,
+                il: coords.name === 'Jerusalem' || coords.name === 'Tel Aviv',
+            };
+            
+            // Get events for today
+            const events = HebrewCalendar.calendar(options);
+            
+            // Check if today is a holiday when website should be closed
+            for (const event of events) {
+                const desc = event.getDesc();
                 
-                const eventTime = event.eventTime;
-                const isAfterCandleLighting = event.getDesc().includes('Candle') && now > eventTime;
-                const isBeforeHavdalah = event.getDesc() === 'Havdalah' && now < eventTime;
-                
-                if (isAfterCandleLighting || isBeforeHavdalah || (hDate.getDay() === 6)) {
-                    console.log('Currently during Shabbat');
+                // Check if it's a major holiday
+                if (CLOSED_HOLIDAYS.some(holiday => desc.includes(holiday))) {
                     return {
                         isClosed: true,
-                        type: 'shabbat'
+                        type: 'holiday',
+                        name: desc
                     };
                 }
+                
+                // Check if it's Shabbat (either Candle Lighting or Havdalah)
+                if (event.getFlags() & flags.LIGHT_CANDLES || 
+                    event.getFlags() & flags.LIGHT_CANDLES_TZEIS || 
+                    desc === 'Havdalah') {
+                    
+                    const eventTime = event.eventTime;
+                    
+                    // If it's candle lighting event and it's after that time
+                    if (desc.includes('Candle') && now > eventTime) {
+                        return {
+                            isClosed: true,
+                            type: 'shabbat'
+                        };
+                    }
+                    
+                    // If it's Havdalah event and it's before that time, and it's Saturday
+                    if (desc === 'Havdalah' && now < eventTime && now.getDay() === 6) {
+                        return {
+                            isClosed: true,
+                            type: 'shabbat'
+                        };
+                    }
+                    
+                    // Otherwise, check if it's simply Saturday
+                    if (hDate.getDay() === 6 && now.getHours() < 20) {
+                        // Additional check - only if it's actually Saturday
+                        if (now.getDay() === 6) {
+                            return {
+                                isClosed: true,
+                                type: 'shabbat'
+                            };
+                        }
+                    }
+                }
             }
-        }
-        
-        // Double check if it's Shabbat based on candle lighting event timing
-        if (candleLightingEvent) {
-            const candleTime = candleLightingEvent.eventTime;
-            const now = new Date();
             
-            // Check if we're after candle lighting
-            if (now > candleTime) {
-                // Check if it's still Friday or early Saturday
-                const day = now.getDay();
-                if (day === 5 || (day === 6 && now.getHours() < 19)) {
-                    console.log('After candle lighting time, before Shabbat ends');
-                    return {
-                        isClosed: true,
-                        type: 'shabbat'
-                    };
-                }
-            }
+            // If there's a candle lighting event for today but it hasn't happened yet,
+            // or there's no Havdalah event for today, we're not currently in Shabbat
+            
+        } catch (hebcalError) {
+            console.error('Error in hebcal processing:', hebcalError);
+            // Continue to fallback logic
         }
         
-        // Fallback Check: Check if it's Shabbat based on day of week 
-        const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
-        const hours = now.getHours();
-        
-        // Friday after 4 PM (16:00) or Saturday before 7 PM (19:00)
-        if ((dayOfWeek === 5 && hours >= 16) || (dayOfWeek === 6 && hours < 19)) {
-            console.log('Fallback: Likely Shabbat based on day and hour');
+        // Fallback to simple check
+        if (isActuallyShabbat()) {
             return {
                 isClosed: true,
                 type: 'shabbat'
@@ -152,12 +191,8 @@ function getClosureType() {
     } catch (error) {
         console.error('Error in getClosureType:', error);
         
-        // Fallback to basic day-of-week check if anything fails
-        const now = new Date();
-        const dayOfWeek = now.getDay();
-        const hours = now.getHours();
-        
-        if ((dayOfWeek === 5 && hours >= 16) || (dayOfWeek === 6 && hours < 19)) {
+        // Ultimate fallback - simple day of week check if anything fails
+        if (isActuallyShabbat()) {
             return {
                 isClosed: true,
                 type: 'shabbat'

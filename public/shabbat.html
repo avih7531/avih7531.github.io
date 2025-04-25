@@ -33,90 +33,112 @@
             line-height: 1.6;
             margin-bottom: 1.5rem;
         }
-        .main-icon {
+        .shabbat-icon {
             font-size: 3rem;
             margin-bottom: 1rem;
         }
         .holiday-icons {
-            font-size: 2rem;
-            margin: 0.5rem;
-        }
-        .icons-container {
+            font-size: 1.5rem;
             margin-top: 1rem;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="main-icon" id="main-icon">🕯️</div>
+        <div id="mainIcon" class="shabbat-icon">🕯️</div>
         <h1 id="greeting">Shabbat Shalom!</h1>
         <p id="message">We'll be back after Shabbat!</p>
-        <p id="wish">May you have a peaceful and meaningful Shabbat.</p>
-        <div class="icons-container" id="holiday-icons" style="display: none;"></div>
+        <p id="wishes">May you have a peaceful and meaningful Shabbat.</p>
+        <div id="additionalIcons" class="holiday-icons"></div>
     </div>
 
     <script>
-        // Holiday-specific configurations
-        const holidayConfigs = {
+        // Holiday-specific content
+        const HOLIDAY_CONTENT = {
             'Rosh Hashana': {
-                mainIcon: '🍎',
-                icons: ['🍯', '🍎', '🎺'],
-                wish: 'May you have a sweet and happy new year.'
+                icon: '🍎',
+                greeting: 'Shanah Tovah!',
+                wish: 'May you be inscribed and sealed for a good year.',
+                additionalIcons: '🍯🍎🎺'
             },
             'Yom Kippur': {
-                mainIcon: '🕊️',
-                icons: ['🕊️', '📖', '🕯️'],
-                wish: 'May you have an easy and meaningful fast.'
+                icon: '📖',
+                greeting: 'G\'mar Chatimah Tovah!',
+                wish: 'May you have a meaningful fast and be sealed in the Book of Life.',
+                additionalIcons: '✡️📖🕊️'
             },
             'Sukkot': {
-                mainIcon: '🌿',
-                icons: ['🌿', '🍋', '🎪'],
-                wish: 'May you have a joyous Sukkot in your sukkah.'
+                icon: '🌿',
+                greeting: 'Chag Sameach!',
+                wish: 'May you have a joyous Sukkot holiday.',
+                additionalIcons: '🌿🍋🎪'
             },
             'Shmini Atzeret': {
-                mainIcon: '🌧️',
-                icons: ['🌧️', '🕯️', '📖'],
-                wish: 'May you have a meaningful Shmini Atzeret.'
+                icon: '🌧️',
+                greeting: 'Chag Sameach!',
+                wish: 'May the coming year be blessed with abundant rain and prosperity.',
+                additionalIcons: '🌧️✡️🌱'
             },
             'Simchat Torah': {
-                mainIcon: '📜',
-                icons: ['📜', '🎉', '🕺'],
-                wish: 'May you have a joyous Simchat Torah celebration.'
+                icon: '📜',
+                greeting: 'Chag Sameach!',
+                wish: 'May you rejoice in the Torah and find meaning in its teachings.',
+                additionalIcons: '📜✡️💃'
             },
             'Pesach': {
-                mainIcon: '🍷',
-                icons: ['🍷', '🍞', '🥚'],
-                wish: 'May you have a meaningful and joyous Pesach.'
+                icon: '🍷',
+                greeting: 'Chag Sameach!',
+                wish: 'May you have a meaningful and joyous Pesach.',
+                additionalIcons: '🍷🍞🥚'
             },
             'Shavuot': {
-                mainIcon: '🥛',
-                icons: ['🥛', '🍰', '📖'],
-                wish: 'May you have a meaningful and joyous Shavuot.'
+                icon: '🌸',
+                greeting: 'Chag Sameach!',
+                wish: 'May you receive the Torah with joy and understanding.',
+                additionalIcons: '🌸📜🧀'
             }
         };
 
-        // Get URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const type = urlParams.get('type');
-        const name = decodeURIComponent(urlParams.get('name') || '');
-
-        // Update content based on type
-        if (type === 'holiday' && name && holidayConfigs[name]) {
-            const config = holidayConfigs[name];
-            document.getElementById('main-icon').textContent = config.mainIcon;
-            document.getElementById('greeting').textContent = 'Chag Sameach!';
-            document.getElementById('message').textContent = `We'll be back after ${name}!`;
-            document.getElementById('wish').textContent = config.wish;
+        document.addEventListener('DOMContentLoaded', function() {
+            // Try to parse type and name from data passed by middleware
+            // Fall back to URL parameters for backward compatibility
+            let type = 'shabbat';
+            let name = '';
             
-            const iconsContainer = document.getElementById('holiday-icons');
-            iconsContainer.style.display = 'block';
-            config.icons.forEach(icon => {
-                const span = document.createElement('span');
-                span.className = 'holiday-icons';
-                span.textContent = icon;
-                iconsContainer.appendChild(span);
-            });
-        }
+            // Get URL parameters as fallback for client-side testing
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlType = urlParams.get('type');
+            const urlName = urlParams.get('name');
+            
+            if (urlType) type = urlType;
+            if (urlName) name = urlName;
+            
+            // Update content based on type and name
+            if (type === 'holiday' && name) {
+                const holidayData = HOLIDAY_CONTENT[name] || {
+                    icon: '🎉',
+                    greeting: 'Chag Sameach!',
+                    wish: 'May you have a joyous holiday.',
+                    additionalIcons: '🎉✡️🕍'
+                };
+                
+                // Update the page content for holiday
+                document.getElementById('mainIcon').textContent = holidayData.icon;
+                document.getElementById('greeting').textContent = holidayData.greeting;
+                document.getElementById('message').textContent = `We'll be back after ${name}!`;
+                document.getElementById('wishes').textContent = holidayData.wish;
+                document.getElementById('additionalIcons').textContent = holidayData.additionalIcons;
+                document.title = `${holidayData.greeting} - Rejewvenate`;
+            } else {
+                // Default Shabbat content
+                document.getElementById('mainIcon').textContent = '🕯️';
+                document.getElementById('greeting').textContent = 'Shabbat Shalom!';
+                document.getElementById('message').textContent = "We'll be back after Shabbat!";
+                document.getElementById('wishes').textContent = 'May you have a peaceful and meaningful Shabbat.';
+                document.getElementById('additionalIcons').textContent = '';
+                document.title = 'Shabbat Shalom - Rejewvenate';
+            }
+        });
     </script>
 </body>
 </html> 
