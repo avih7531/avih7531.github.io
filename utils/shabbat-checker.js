@@ -1,180 +1,173 @@
-const hebcal = require('hebcal');
+const { HebrewCalendar, HDate, Location, Event, flags, CandleLightingEvent } = require('@hebcal/core');
 
-// Add a compatibility layer to handle API differences
-const getSunset = (date, timezone) => {
-    try {
-        // Try using the newer API (SunTimes.getSunset)
-        if (hebcal.SunTimes && typeof hebcal.SunTimes.getSunset === 'function') {
-            return hebcal.SunTimes.getSunset(date, timezone);
-        }
-        
-        // Try using an older API if it exists
-        if (hebcal.Zmanim && typeof hebcal.Zmanim.getSunset === 'function') {
-            return hebcal.Zmanim.getSunset(date, timezone);
-        }
-        
-        // No compatible API found, throw an error
-        throw new Error('No compatible sunset calculation method found in hebcal');
-    } catch (error) {
-        console.error('Error in getSunset compatibility function:', error);
-        
-        // Fallback: Use approximate sunset time (around 6:00 PM)
-        const fallbackSunset = new Date(date);
-        fallbackSunset.setHours(18, 0, 0, 0);
-        return fallbackSunset;
-    }
-};
-
-// List of holidays when the website should be closed, with their start/end times
+// List of holidays when the website should be closed
 const CLOSED_HOLIDAYS = [
-    {
-        name: 'Rosh Hashana',
-        startBuffer: true,  // Add buffer before start
-        endBuffer: true     // Add buffer after end
-    },
-    {
-        name: 'Yom Kippur',
-        startBuffer: true,
-        endBuffer: true
-    },
-    {
-        name: 'Sukkot',
-        startBuffer: true,
-        endBuffer: true
-    },
-    {
-        name: 'Shmini Atzeret',
-        startBuffer: true,
-        endBuffer: true
-    },
-    {
-        name: 'Simchat Torah',
-        startBuffer: true,
-        endBuffer: true
-    },
-    {
-        name: 'Pesach',
-        startBuffer: true,
-        endBuffer: true
-    },
-    {
-        name: 'Shavuot',
-        startBuffer: true,
-        endBuffer: true
-    }
+    'Rosh Hashana',
+    'Yom Kippur',
+    'Sukkot',
+    'Shmini Atzeret',
+    'Simchat Torah',
+    'Pesach',
+    'Shavuot'
 ];
 
+// Map of common timezones to city coordinates (latitude, longitude)
+const TIMEZONE_COORDS = {
+    'America/New_York': { lat: 40.7128, lng: -74.0060, name: 'New York' },
+    'America/Chicago': { lat: 41.8781, lng: -87.6298, name: 'Chicago' },
+    'America/Los_Angeles': { lat: 34.0522, lng: -118.2437, name: 'Los Angeles' },
+    'America/Denver': { lat: 39.7392, lng: -104.9903, name: 'Denver' },
+    'America/Phoenix': { lat: 33.4484, lng: -112.0740, name: 'Phoenix' },
+    'Europe/London': { lat: 51.5074, lng: -0.1278, name: 'London' },
+    'Europe/Paris': { lat: 48.8566, lng: 2.3522, name: 'Paris' },
+    'Europe/Berlin': { lat: 52.5200, lng: 13.4050, name: 'Berlin' },
+    'Europe/Moscow': { lat: 55.7558, lng: 37.6173, name: 'Moscow' },
+    'Asia/Jerusalem': { lat: 31.7683, lng: 35.2137, name: 'Jerusalem' },
+    'Asia/Tel_Aviv': { lat: 32.0853, lng: 34.7818, name: 'Tel Aviv' },
+    'Asia/Tokyo': { lat: 35.6762, lng: 139.6503, name: 'Tokyo' },
+    'Australia/Sydney': { lat: -33.8688, lng: 151.2093, name: 'Sydney' },
+    'Pacific/Auckland': { lat: -36.8509, lng: 174.7645, name: 'Auckland' },
+    // Default coordinates if timezone not found
+    'default': { lat: 0, lng: 0, name: 'UTC' }
+};
+
 function getClosureType() {
-    const now = new Date();
-    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    
-    // Get the current Hebrew date
-    const hDate = new hebcal.HDate(now);
-    
-    // Check if today is a holiday when the website should be closed
-    for (const holiday of CLOSED_HOLIDAYS) {
-        try {
-            const holidayDate = new hebcal.HolidayEvent(holiday.name, hDate.getFullYear());
+    try {
+        const now = new Date();
+        const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        console.log(`User timezone detected: ${userTimezone}`);
+        
+        // Get coordinates for the user's timezone, or use default if not found
+        const coords = TIMEZONE_COORDS[userTimezone] || TIMEZONE_COORDS.default;
+        console.log(`Using coordinates for ${coords.name}: ${coords.lat}, ${coords.lng}`);
+        
+        // Create a location based on the timezone's city coordinates
+        const location = new Location(
+            coords.lat, 
+            coords.lng, 
+            false, // Use elevation for more accurate times?
+            userTimezone, 
+            coords.name
+        );
+        
+        // Get today's Hebrew date
+        const hDate = new HDate(now);
+        
+        // Create options for HebrewCalendar
+        const options = {
+            start: now,
+            end: now,
+            location: location,
+            candlelighting: true,
+            havdalahMins: 42,
+            sedrot: true,
+            noMinorFast: false,
+            noRoshChodesh: true,
+            noSpecialShabbat: true,
+            il: coords.name === 'Jerusalem' || coords.name === 'Tel Aviv', // Set to true if in Israel
+        };
+        
+        // Get events for today
+        const events = HebrewCalendar.calendar(options);
+        console.log(`Found ${events.length} events for today`);
+        
+        // Check for candle lighting directly
+        let candleLightingEvent = null;
+        
+        for (const event of events) {
+            console.log(`Checking event: ${event.getDesc()}`);
             
-            // Check if today matches the holiday date
-            if (!holidayDate || !holidayDate.getDate()) {
-                console.warn(`Could not get date for holiday: ${holiday.name}`);
-                continue;
+            // Check if event is an instance of CandleLightingEvent
+            if (event instanceof CandleLightingEvent) {
+                console.log('Found candle lighting event!');
+                candleLightingEvent = event;
             }
             
-            const holidayStart = new Date(holidayDate.getDate().greg());
-            const holidayEnd = new Date(holidayStart);
-            holidayEnd.setDate(holidayEnd.getDate() + 1); // Holiday ends at sunset the next day
-
-            // Adjust start and end times with buffers if specified
-            if (holiday.startBuffer) {
-                holidayStart.setHours(holidayStart.getHours() - 1); // One hour before sunset
+            // Check if it's a major holiday
+            if (CLOSED_HOLIDAYS.some(holiday => event.getDesc().includes(holiday))) {
+                console.log(`Holiday detected: ${event.getDesc()}`);
+                return {
+                    isClosed: true,
+                    type: 'holiday',
+                    name: event.getDesc()
+                };
             }
-            if (holiday.endBuffer) {
-                holidayEnd.setHours(holidayEnd.getHours() + 1); // One hour after sunset
-            }
-
-            // Compare current date to holiday date
-            const currentDate = now.toDateString();
-            const holidayDateStr = holidayStart.toDateString();
-            const holidayEndDateStr = holidayEnd.toDateString();
             
-            if (currentDate === holidayDateStr || currentDate === holidayEndDateStr) {
-                if (now >= holidayStart && now < holidayEnd) {
+            // Check if it's Shabbat related
+            if (event.getFlags() & flags.LIGHT_CANDLES || 
+                event.getFlags() & flags.LIGHT_CANDLES_TZEIS || 
+                event.getDesc() === 'Havdalah') {
+                
+                console.log(`Shabbat event detected: ${event.getDesc()}`);
+                
+                const eventTime = event.eventTime;
+                const isAfterCandleLighting = event.getDesc().includes('Candle') && now > eventTime;
+                const isBeforeHavdalah = event.getDesc() === 'Havdalah' && now < eventTime;
+                
+                if (isAfterCandleLighting || isBeforeHavdalah || (hDate.getDay() === 6)) {
+                    console.log('Currently during Shabbat');
                     return {
                         isClosed: true,
-                        type: 'holiday',
-                        name: holiday.name
+                        type: 'shabbat'
                     };
                 }
             }
-        } catch (e) {
-            console.error(`Error checking holiday ${holiday.name}:`, e);
-            continue;
         }
+        
+        // Double check if it's Shabbat based on candle lighting event timing
+        if (candleLightingEvent) {
+            const candleTime = candleLightingEvent.eventTime;
+            const now = new Date();
+            
+            // Check if we're after candle lighting
+            if (now > candleTime) {
+                // Check if it's still Friday or early Saturday
+                const day = now.getDay();
+                if (day === 5 || (day === 6 && now.getHours() < 19)) {
+                    console.log('After candle lighting time, before Shabbat ends');
+                    return {
+                        isClosed: true,
+                        type: 'shabbat'
+                    };
+                }
+            }
+        }
+        
+        // Fallback Check: Check if it's Shabbat based on day of week 
+        const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
+        const hours = now.getHours();
+        
+        // Friday after 4 PM (16:00) or Saturday before 7 PM (19:00)
+        if ((dayOfWeek === 5 && hours >= 16) || (dayOfWeek === 6 && hours < 19)) {
+            console.log('Fallback: Likely Shabbat based on day and hour');
+            return {
+                isClosed: true,
+                type: 'shabbat'
+            };
+        }
+        
+        return {
+            isClosed: false
+        };
+    } catch (error) {
+        console.error('Error in getClosureType:', error);
+        
+        // Fallback to basic day-of-week check if anything fails
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const hours = now.getHours();
+        
+        if ((dayOfWeek === 5 && hours >= 16) || (dayOfWeek === 6 && hours < 19)) {
+            return {
+                isClosed: true,
+                type: 'shabbat'
+            };
+        }
+        
+        return {
+            isClosed: false
+        };
     }
-    
-    // Check if it's Friday after sunset or Saturday before sunset
-    const isFriday = now.getDay() === 5; // 5 is Friday
-    const isSaturday = now.getDay() === 6; // 6 is Saturday
-    
-    if (isFriday) {
-        // Get sunset time for Friday and add one hour buffer
-        try {
-            const sunset = getSunset(now, userTimezone);
-            const shabbatStart = new Date(sunset);
-            shabbatStart.setHours(shabbatStart.getHours() - 1); // One hour before sunset
-            
-            if (now >= shabbatStart) {
-                return {
-                    isClosed: true,
-                    type: 'shabbat'
-                };
-            }
-        } catch (error) {
-            console.error('Error calculating sunset time:', error);
-            // Fallback: Use approximate sunset time (around 6:00 PM)
-            const approxSunset = new Date(now);
-            approxSunset.setHours(17, 0, 0, 0); // 5:00 PM (buffer hour included)
-            
-            if (now.getHours() >= 17) { // After 5 PM on Friday
-                return {
-                    isClosed: true,
-                    type: 'shabbat'
-                };
-            }
-        }
-    } else if (isSaturday) {
-        // Get sunset time for Saturday and add one hour buffer
-        try {
-            const sunset = getSunset(now, userTimezone);
-            const shabbatEnd = new Date(sunset);
-            shabbatEnd.setHours(shabbatEnd.getHours() + 1); // One hour after sunset
-            
-            if (now < shabbatEnd) {
-                return {
-                    isClosed: true,
-                    type: 'shabbat'
-                };
-            }
-        } catch (error) {
-            console.error('Error calculating sunset time:', error);
-            // Fallback: Use approximate sunset time (around 6:00 PM)
-            const approxSunset = new Date(now);
-            approxSunset.setHours(19, 0, 0, 0); // 7:00 PM (buffer hour included)
-            
-            if (now.getHours() < 19) { // Before 7 PM on Saturday
-                return {
-                    isClosed: true,
-                    type: 'shabbat'
-                };
-            }
-        }
-    }
-    
-    return {
-        isClosed: false
-    };
 }
 
 module.exports = getClosureType; 

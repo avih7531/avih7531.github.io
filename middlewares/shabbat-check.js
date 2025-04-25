@@ -7,19 +7,30 @@ function shabbatCheck(req, res, next) {
     return next();
   }
 
-  // Check for force_shabbat query parameter
-  const forceShabbat = req.query.force_shabbat === 'true';
-  const closureInfo = getClosureType();
-
-  if (closureInfo.isClosed || forceShabbat) {
-    // If it's Shabbat/holiday or force_shabbat is true, serve the Shabbat page
-    // Preserve the original query parameters if force_shabbat is true
-    const type = forceShabbat ? (req.query.type || 'shabbat') : closureInfo.type;
-    const name = forceShabbat ? (req.query.name || '') : closureInfo.name;
+  // Handle force_shabbat for testing
+  if (req.query.force_shabbat === 'true') {
+    const type = req.query.type || 'shabbat';
+    const name = req.query.name || '';
     
-    // Redirect to shabbat.html with the correct parameters
-    const redirectUrl = `/shabbat.html?type=${type}&name=${encodeURIComponent(name)}`;
-    return res.redirect(redirectUrl);
+    // Preserve the original query parameters if force_shabbat is true
+    const queryParams = new URLSearchParams();
+    if (type) queryParams.set('type', type);
+    if (name) queryParams.set('name', encodeURIComponent(name));
+    
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return res.sendFile(path.join(__dirname, '../public', `shabbat.html${queryString}`));
+  }
+
+  // Check actual closure status
+  const closureStatus = getClosureType();
+  if (closureStatus.isClosed) {
+    // If it's Shabbat or a holiday, serve the Shabbat page
+    const queryParams = new URLSearchParams();
+    queryParams.set('type', closureStatus.type || 'shabbat');
+    if (closureStatus.name) queryParams.set('name', encodeURIComponent(closureStatus.name));
+    
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return res.sendFile(path.join(__dirname, '../public', `shabbat.html${queryString}`));
   }
   
   next();
