@@ -6,6 +6,7 @@ const router = express.Router();
 const bodyParser = require('body-parser');
 
 const stripeService = require('../services/stripe');
+const supabaseService = require('../services/supabase');
 
 /**
  * Create a standard donation checkout session
@@ -67,6 +68,25 @@ router.post('/create-shabbat-session', async (req, res) => {
     }
     
     const amount = parseFloat(donationAmount) || 0;
+    
+    // Check if email already exists
+    const emailAlreadyExists = await supabaseService.emailExists(email);
+    const isNewRegistration = !emailAlreadyExists;
+    
+    // Add registration to database regardless of donation amount
+    try {
+      await supabaseService.addShabbatRegistration({
+        firstName,
+        lastName,
+        email,
+        donationAmount: amount,
+        isNew: isNewRegistration
+      });
+    } catch (dbError) {
+      console.error('Database error during Shabbat registration:', dbError);
+      // Continue with the process even if database fails, but log the error
+      // You might want to change this behavior based on your requirements
+    }
     
     // If donation is $0, redirect directly to external signup
     if (amount === 0) {
