@@ -4,15 +4,28 @@
 const { createClient } = require('@supabase/supabase-js');
 
 // Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_ENDPOINT;
-const supabaseKey = process.env.SUPABASE_PUBLISHABLE;
+const supabaseUrl = 'https://xhlgfpnsiaqfbgtwjrbl.supabase.co';
+const supabaseKey = process.env.SUPABASE_APIKEY;
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase environment variables');
-  throw new Error('Supabase configuration is required');
+if (!supabaseKey) {
+  console.error('Missing SUPABASE_APIKEY environment variable');
+  throw new Error('Supabase API key is required');
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+/**
+ * Properly capitalize a name (title case)
+ * @param {string} name - Name to capitalize
+ * @returns {string} - Properly capitalized name
+ */
+function capitalizeName(name) {
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
 /**
  * Add a new Shabbat registration to the database
@@ -27,16 +40,25 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 async function addShabbatRegistration(registrationData) {
   const { firstName, lastName, email, donationAmount = 0, isNew = true } = registrationData;
   
+  // Properly capitalize names
+  const capitalizedFirstName = capitalizeName(firstName.trim());
+  const capitalizedLastName = capitalizeName(lastName.trim());
+  
   try {
-    console.log('Adding Shabbat registration to database:', { firstName, lastName, email, donationAmount });
+    console.log('Adding Shabbat registration to database:', { 
+      firstName: capitalizedFirstName, 
+      lastName: capitalizedLastName, 
+      email, 
+      donationAmount 
+    });
     
     const { data, error } = await supabase
-      .from('YP_SHABBOS')
+      .from('YP_Shabbos')
       .insert([
         {
-          first_name: firstName,
-          last_name: lastName,
-          email: email,
+          first_name: capitalizedFirstName,
+          last_name: capitalizedLastName,
+          email: email.toLowerCase().trim(),
           donation_amount: parseFloat(donationAmount),
           new: isNew
         }
@@ -58,26 +80,32 @@ async function addShabbatRegistration(registrationData) {
 }
 
 /**
- * Check if an email already exists in the YP_SHABBOS table
- * @param {string} email - Email to check
- * @returns {Promise<boolean>} - Whether email exists
+ * Check if a person with the same first and last name already exists in the YP_Shabbos table
+ * @param {string} firstName - First name to check
+ * @param {string} lastName - Last name to check
+ * @returns {Promise<boolean>} - Whether name combination exists
  */
-async function emailExists(email) {
+async function nameExists(firstName, lastName) {
   try {
+    // Capitalize names for consistent comparison
+    const capitalizedFirstName = capitalizeName(firstName.trim());
+    const capitalizedLastName = capitalizeName(lastName.trim());
+    
     const { data, error } = await supabase
-      .from('YP_SHABBOS')
+      .from('YP_Shabbos')
       .select('id')
-      .eq('email', email)
+      .eq('first_name', capitalizedFirstName)
+      .eq('last_name', capitalizedLastName)
       .limit(1);
     
     if (error) {
-      console.error('Error checking email existence:', error);
+      console.error('Error checking name existence:', error);
       throw error;
     }
     
     return data && data.length > 0;
   } catch (error) {
-    console.error('Error checking email existence:', error);
+    console.error('Error checking name existence:', error);
     throw error;
   }
 }
@@ -89,7 +117,7 @@ async function emailExists(email) {
 async function getAllShabbatRegistrations() {
   try {
     const { data, error } = await supabase
-      .from('YP_SHABBOS')
+      .from('YP_Shabbos')
       .select('*')
       .order('created_at', { ascending: false });
     
@@ -107,7 +135,8 @@ async function getAllShabbatRegistrations() {
 
 module.exports = {
   addShabbatRegistration,
-  emailExists,
+  nameExists,
   getAllShabbatRegistrations,
+  capitalizeName,
   supabase
 }; 

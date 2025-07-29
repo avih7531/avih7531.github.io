@@ -69,9 +69,9 @@ router.post('/create-shabbat-session', async (req, res) => {
     
     const amount = parseFloat(donationAmount) || 0;
     
-    // Check if email already exists
-    const emailAlreadyExists = await supabaseService.emailExists(email);
-    const isNewRegistration = !emailAlreadyExists;
+    // Check if person with same first and last name already exists
+    const nameAlreadyExists = await supabaseService.nameExists(firstName, lastName);
+    const isNewRegistration = !nameAlreadyExists;
     
     // Add registration to database regardless of donation amount
     try {
