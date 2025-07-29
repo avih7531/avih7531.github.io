@@ -43,15 +43,12 @@ The server-side code handles API requests through various endpoints configured i
 
 ## Features
 
-- **Event Registration**: Users can register for Passover and other events
 - **Donations**: Process donations via Stripe integration
 - **Contact Form**: Allow users to send messages through a contact form
-- **Admin Dashboard**: View and manage registrations
 
 ## Technologies Used
 
 - **Node.js**: JavaScript runtime
 - **Express**: Web framework
-- **Vercel Edge Config**: For storing registration data
-- **Stripe**: Payment processing
+- **Stripe**: For payment processing
 - **HTML/CSS/JavaScript**: Frontend interface 

@@ -25,25 +25,15 @@ app.use('/images', express.static(path.join(__dirname, 'public/images')));
 
 // Import routes
 const donationRoutes = require('./routes/donations');
-const registrationRoutes = require('./routes/registrations');
 const contactRoutes = require('./routes/contact');
 
 // Register routes
 app.use(donationRoutes);
-app.use(registrationRoutes);
 app.use(contactRoutes);
 
 // Serve main HTML pages
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/passover', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'passover.html'));
-});
-
-app.get('/passover-registration-success', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'passover-registration-success.html'));
 });
 
 // Add routes for other HTML pages
@@ -52,8 +42,7 @@ const htmlPages = [
   'team',
   'contact',
   'donate',
-  'donation-success',
-  'admin-registrations'
+  'donation-success'
 ];
 
 htmlPages.forEach(page => {

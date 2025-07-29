@@ -115,61 +115,6 @@ async function createDonationCheckoutSession(donationDetails, origin) {
 }
 
 /**
- * Create a Passover donation checkout session
- * @param {Object} donationDetails - Donation details
- * @param {string} donationDetails.registrationId - Registration ID
- * @param {number} donationDetails.amount - Donation amount in cents
- * @param {Object} donationDetails.registrationData - Registration data
- * @param {string} origin - Request origin for success/cancel URLs
- * @returns {Promise<Object>} - Stripe checkout session
- */
-async function createPassoverCheckoutSession(donationDetails, origin) {
-  const { registrationId, amount, registrationData } = donationDetails;
-  
-  // Ensure origin doesn't end with a slash
-  const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin;
-  
-  // Log the URLs for debugging
-  const successUrl = `${baseUrl}/passover-registration-success.html?registration_id=${registrationId}&donation=true`;
-  const cancelUrl = `${baseUrl}/passover-registration-success.html?registration_id=${registrationId}`;
-  
-  console.log('Stripe success URL:', successUrl);
-  console.log('Stripe cancel URL:', cancelUrl);
-  
-  // Create a Stripe Checkout Session
-  const session = await stripeClient.checkout.sessions.create({
-    payment_method_types: ['card'],
-    line_items: [{
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: 'Passover Seder Donation',
-          description: 'Thank you for supporting our Passover Seder'
-        },
-        unit_amount: amount, // amount in cents
-      },
-      quantity: 1,
-    }],
-    mode: 'payment',
-    success_url: successUrl,
-    cancel_url: cancelUrl,
-    metadata: {
-      registrationId,
-      firstName: registrationData.firstName,
-      lastName: registrationData.lastName,
-      email: registrationData.email,
-      donationAmount: registrationData.donationAmount
-    }
-  });
-  
-  return {
-    success: true,
-    url: session.url,
-    sessionId: session.id
-  };
-}
-
-/**
  * Verify and construct Stripe webhook event
  * @param {string} payload - Request body as string
  * @param {string} signature - Stripe signature header
@@ -191,7 +136,6 @@ function constructWebhookEvent(payload, signature) {
 
 module.exports = {
   createDonationCheckoutSession,
-  createPassoverCheckoutSession,
   constructWebhookEvent,
   stripe: stripeClient
 }; 
