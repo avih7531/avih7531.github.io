@@ -36,6 +36,11 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Add route for Shabbat registration
+app.get('/yp/shabbat/register', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'yp', 'shabbat', 'register.html'));
+});
+
 // Add routes for other HTML pages
 const htmlPages = [
   'about-us',

@@ -115,6 +115,73 @@ async function createDonationCheckoutSession(donationDetails, origin) {
 }
 
 /**
+ * Create a Shabbat registration checkout session
+ * @param {Object} registrationDetails - Registration details  
+ * @param {number} registrationDetails.donationAmount - Donation amount
+ * @param {string} registrationDetails.donationType - Should be 'shabbat-registration'
+ * @param {string} registrationDetails.firstName - Registrant first name
+ * @param {string} registrationDetails.lastName - Registrant last name
+ * @param {string} registrationDetails.email - Registrant email
+ * @param {string} origin - Request origin for success/cancel URLs
+ * @returns {Promise<Object>} - Stripe checkout session
+ */
+async function createShabbatRegistrationSession(registrationDetails, origin) {
+  const { donationAmount, donationType, firstName, lastName, email } = registrationDetails;
+  
+  // Convert amount to cents for Stripe
+  const amountInCents = Math.round(donationAmount * 100);
+  
+  // Ensure origin doesn't end with a slash
+  const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+  
+  // For Shabbat registrations, redirect to external signup after payment
+  // Using placeholder YouTube URL as requested
+  const successUrl = 'https://www.youtube.com';
+  const cancelUrl = `${baseUrl}/yp/shabbat/register.html`;
+  
+  console.log('Shabbat registration success URL:', successUrl);
+  console.log('Shabbat registration cancel URL:', cancelUrl);
+  
+  const productName = 'Shabbat Registration Donation';
+  const description = 'Thank you for your donation with Shabbat registration';
+  
+  // Create session parameters for one-time payment
+  const sessionParams = {
+    payment_method_types: ['card'],
+    metadata: {
+      donationType,
+      firstName,
+      lastName,
+      email,
+      donationAmount
+    },
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    line_items: [{
+      price_data: {
+        currency: 'usd',
+        product_data: {
+          name: productName,
+          description: description
+        },
+        unit_amount: amountInCents,
+      },
+      quantity: 1,
+    }],
+    mode: 'payment'
+  };
+  
+  // Create a Stripe Checkout Session
+  const session = await stripeClient.checkout.sessions.create(sessionParams);
+  
+  return {
+    success: true,
+    url: session.url,
+    sessionId: session.id
+  };
+}
+
+/**
  * Verify and construct Stripe webhook event
  * @param {string} payload - Request body as string
  * @param {string} signature - Stripe signature header
@@ -136,6 +203,7 @@ function constructWebhookEvent(payload, signature) {
 
 module.exports = {
   createDonationCheckoutSession,
+  createShabbatRegistrationSession,
   constructWebhookEvent,
   stripe: stripeClient
 }; 

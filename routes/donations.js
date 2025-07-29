@@ -53,6 +53,61 @@ router.post('/create-checkout-session', async (req, res) => {
 });
 
 /**
+ * Create a Shabbat registration session (handles $0 donations)
+ */
+router.post('/create-shabbat-session', async (req, res) => {
+  try {
+    const { donationAmount, donationType, firstName, lastName, email } = req.body;
+    
+    if (!firstName || !lastName || !email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing required fields for Shabbat registration' 
+      });
+    }
+    
+    const amount = parseFloat(donationAmount) || 0;
+    
+    // If donation is $0, skip Stripe and redirect directly
+    if (amount === 0) {
+      console.log(`Free Shabbat registration for ${firstName} ${lastName} (${email})`);
+      
+      // For free registrations, redirect directly to external signup (placeholder: YouTube)
+      return res.json({
+        success: true,
+        redirectUrl: 'https://www.youtube.com' // Placeholder redirect URL
+      });
+    }
+    
+    // For paid registrations, use Stripe
+    let origin = req.headers.origin || req.headers.host;
+    
+    if (origin && !origin.startsWith('http')) {
+      origin = `${req.protocol}://${origin}`;
+    }
+    
+    if (process.env.VERCEL_URL) {
+      origin = `https://${process.env.VERCEL_URL}`;
+    }
+    
+    console.log('Shabbat registration origin:', origin);
+    
+    const session = await stripeService.createShabbatRegistrationSession(
+      { donationAmount: amount, donationType, firstName, lastName, email },
+      origin
+    );
+    
+    res.json(session);
+  } catch (error) {
+    console.error('Error creating Shabbat registration session:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create registration session: ' + error.message 
+    });
+  }
+});
+
+/**
  * Stripe webhook handler
  */
 router.post('/stripe-webhook', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
