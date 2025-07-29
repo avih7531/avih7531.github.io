@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Shabbat Registrations</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #004080 0%, #002244 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .login-form {
+      background: white;
+      padding: 40px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    .dashboard {
+      display: none;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: bold;
+      color: #003366;
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+
+    .btn {
+      background-color: #003366;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .btn:hover {
+      background-color: #004080;
+    }
+
+    .btn-export {
+      background-color: #28a745;
+      margin-left: 10px;
+    }
+
+    .btn-export:hover {
+      background-color: #218838;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .table-container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+
+    th {
+      background-color: #f8f9fa;
+      font-weight: bold;
+      color: #003366;
+    }
+
+    tr:hover {
+      background-color: #f8f9fa;
+    }
+
+    .new-indicator {
+      font-size: 18px;
+      text-align: center;
+    }
+
+    .donation-amount {
+      font-weight: bold;
+      color: #28a745;
+    }
+
+    .error {
+      color: #dc3545;
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #f8d7da;
+      border: 1px solid #f5c6cb;
+      border-radius: 5px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 2em;
+      font-weight: bold;
+      color: #003366;
+    }
+
+    .stat-label {
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .logout-btn {
+      background-color: #dc3545;
+      float: right;
+    }
+
+    .logout-btn:hover {
+      background-color: #c82333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Login Form -->
+    <div id="loginSection">
+      <div class="header">
+        <h1>🕯️ Shabbat Admin Dashboard</h1>
+        <p>Rejewvenate Registration Management</p>
+      </div>
+      
+      <div class="login-form">
+        <h2>Admin Login</h2>
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" class="form-control" required>
+          </div>
+          <button type="submit" class="btn">Login</button>
+          <div id="loginError"></div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboardSection" class="dashboard">
+      <div class="header">
+        <h1>🕯️ Shabbat Registrations</h1>
+        <button class="btn logout-btn" onclick="logout()">Logout</button>
+      </div>
+
+      <!-- Statistics -->
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-number" id="totalRegistrations">-</div>
+          <div class="stat-label">Total Registrations</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="newAttendees">-</div>
+          <div class="stat-label">New Attendees</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="totalDonations">-</div>
+          <div class="stat-label">Total Donations</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="avgDonation">-</div>
+          <div class="stat-label">Avg Donation</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <div>
+          <h3>Upcoming Shabbat Attendees</h3>
+          <p id="shabbatDate">Loading...</p>
+        </div>
+        <div>
+          <button class="btn" onclick="refreshData()">🔄 Refresh</button>
+          <button class="btn btn-export" onclick="exportCSV()">📊 Export CSV</button>
+        </div>
+      </div>
+
+      <!-- Registrations Table -->
+      <div class="table-container">
+        <div id="loadingMessage" class="loading">Loading registrations...</div>
+        <table id="registrationsTable" style="display: none;">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>New</th>
+              <th>Donation</th>
+              <th>Registered At</th>
+            </tr>
+          </thead>
+          <tbody id="registrationsBody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let authToken = null;
+    let registrationsData = [];
+
+    // Login form handler
+    document.getElementById('loginForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const password = document.getElementById('password').value;
+      const errorDiv = document.getElementById('loginError');
+      
+      try {
+        const response = await fetch('/admin/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ password })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          authToken = data.token;
+          showDashboard();
+          loadRegistrations();
+        } else {
+          errorDiv.innerHTML = '<div class="error">Invalid password</div>';
+        }
+      } catch (error) {
+        errorDiv.innerHTML = '<div class="error">Login failed: ' + error.message + '</div>';
+      }
+    });
+
+    function showDashboard() {
+      document.getElementById('loginSection').style.display = 'none';
+      document.getElementById('dashboardSection').style.display = 'block';
+    }
+
+    function logout() {
+      authToken = null;
+      document.getElementById('loginSection').style.display = 'block';
+      document.getElementById('dashboardSection').style.display = 'none';
+      document.getElementById('password').value = '';
+      document.getElementById('loginError').innerHTML = '';
+    }
+
+    async function loadRegistrations() {
+      try {
+        const response = await fetch('/admin/registrations', {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          registrationsData = data.data;
+          displayRegistrations(registrationsData);
+          updateStatistics(registrationsData);
+        } else {
+          throw new Error(data.message);
+        }
+      } catch (error) {
+        document.getElementById('loadingMessage').innerHTML = 
+          '<div class="error">Failed to load registrations: ' + error.message + '</div>';
+      }
+    }
+
+    function displayRegistrations(registrations) {
+      const tbody = document.getElementById('registrationsBody');
+      tbody.innerHTML = '';
+      
+      if (registrations.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px;">No registrations found</td></tr>';
+      } else {
+        registrations.forEach(reg => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${reg.first_name} ${reg.last_name}</td>
+            <td>${reg.email}</td>
+            <td class="new-indicator">${reg.new ? '✓' : '✗'}</td>
+            <td class="donation-amount">$${parseFloat(reg.donation_amount || 0).toFixed(2)}</td>
+            <td>${new Date(reg.created_at).toLocaleString()}</td>
+          `;
+          tbody.appendChild(row);
+        });
+      }
+      
+      document.getElementById('loadingMessage').style.display = 'none';
+      document.getElementById('registrationsTable').style.display = 'table';
+    }
+
+    function updateStatistics(registrations) {
+      const total = registrations.length;
+      const newCount = registrations.filter(r => r.new).length;
+      const totalDonations = registrations.reduce((sum, r) => sum + parseFloat(r.donation_amount || 0), 0);
+      const avgDonation = total > 0 ? totalDonations / total : 0;
+      
+      document.getElementById('totalRegistrations').textContent = total;
+      document.getElementById('newAttendees').textContent = newCount;
+      document.getElementById('totalDonations').textContent = '$' + totalDonations.toFixed(2);
+      document.getElementById('avgDonation').textContent = '$' + avgDonation.toFixed(2);
+      
+      // Set Shabbat date based on most recent registration
+      const nextShabbat = getNextShabbat();
+      document.getElementById('shabbatDate').textContent = `Week of ${nextShabbat.toLocaleDateString()}`;
+    }
+
+    function getNextShabbat() {
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const daysUntilFriday = (5 - dayOfWeek + 7) % 7;
+      const nextFriday = new Date(today);
+      nextFriday.setDate(today.getDate() + daysUntilFriday);
+      return nextFriday;
+    }
+
+    function refreshData() {
+      document.getElementById('loadingMessage').style.display = 'block';
+      document.getElementById('registrationsTable').style.display = 'none';
+      loadRegistrations();
+    }
+
+    function exportCSV() {
+      if (registrationsData.length === 0) {
+        alert('No data to export');
+        return;
+      }
+      
+      const headers = ['Name', 'Email', 'New', 'Donation Amount', 'Registered At'];
+      const csvContent = [
+        headers.join(','),
+        ...registrationsData.map(reg => [
+          `"${reg.first_name} ${reg.last_name}"`,
+          `"${reg.email}"`,
+          reg.new ? 'Yes' : 'No',
+          parseFloat(reg.donation_amount || 0).toFixed(2),
+          `"${new Date(reg.created_at).toLocaleString()}"`
+        ].join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `shabbat-registrations-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html> 

@@ -44,11 +44,6 @@ async function addShabbatRegistration(registrationData) {
   const capitalizedFirstName = capitalizeName(firstName.trim());
   const capitalizedLastName = capitalizeName(lastName.trim());
   
-  console.log('=== SUPABASE DEBUG ===');
-  console.log('Supabase URL:', 'https://xhlgfpnsiaqfbgtwjrbl.supabase.co');
-  console.log('Service Role Key available:', !!process.env.SUPABASE_SERVICE_ROLE);
-  console.log('Service Role Key length:', process.env.SUPABASE_SERVICE_ROLE ? process.env.SUPABASE_SERVICE_ROLE.length : 'undefined');
-  
   const insertData = {
     first_name: capitalizedFirstName,
     last_name: capitalizedLastName,
@@ -57,34 +52,24 @@ async function addShabbatRegistration(registrationData) {
     new: isNew
   };
   
-  console.log('Data to insert:', insertData);
-  
   try {
-    console.log('Attempting to insert into YP_Shabbos table...');
+    console.log('Adding Shabbat registration:', capitalizedFirstName, capitalizedLastName, 'Amount:', donationAmount);
     
     const { data, error } = await supabase
       .from('YP_Shabbos')
       .insert([insertData])
       .select();
     
-    console.log('Supabase response - data:', data);
-    console.log('Supabase response - error:', error);
-    
     if (error) {
-      console.error('Supabase error details:', JSON.stringify(error, null, 2));
+      console.error('Supabase error:', error);
       throw error;
     }
     
-    console.log('Successfully added Shabbat registration:', data);
-    console.log('=== END SUPABASE DEBUG ===');
+    console.log('Successfully added Shabbat registration');
     return { success: true, data };
     
   } catch (error) {
-    console.error('=== SUPABASE ERROR ===');
     console.error('Error adding Shabbat registration:', error);
-    console.error('Error message:', error.message);
-    console.error('Error details:', JSON.stringify(error, null, 2));
-    console.error('=== END SUPABASE ERROR ===');
     throw error;
   }
 }

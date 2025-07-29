@@ -26,10 +26,12 @@ app.use('/images', express.static(path.join(__dirname, 'public/images')));
 // Import routes
 const donationRoutes = require('./routes/donations');
 const contactRoutes = require('./routes/contact');
+const adminRoutes = require('./routes/admin');
 
 // Register routes
 app.use(donationRoutes);
 app.use(contactRoutes);
+app.use(adminRoutes);
 
 // Serve main HTML pages
 app.get('/', (req, res) => {
@@ -39,6 +41,11 @@ app.get('/', (req, res) => {
 // Add route for Shabbat registration
 app.get('/yp/shabbat/register', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'yp', 'shabbat', 'register.html'));
+});
+
+// Add route for admin dashboard
+app.get('/admin/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html'));
 });
 
 // Add routes for other HTML pages
