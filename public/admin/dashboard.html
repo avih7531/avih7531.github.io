@@ -440,6 +440,8 @@
         const shabbatWeek = getShabbatWeekStart(regDate);
         const weekKey = shabbatWeek.toISOString().split('T')[0];
         
+        console.log('Registration:', reg.first_name, reg.last_name, 'Date:', regDate, 'Shabbat week:', shabbatWeek, 'Key:', weekKey);
+        
         if (!weeks.has(weekKey)) {
           weeks.set(weekKey, {
             date: shabbatWeek,
@@ -467,6 +469,7 @@
           year: 'numeric' 
         });
         option.textContent = `Week of ${weekLabel} (${weekData.count} registrations)`;
+        console.log('Adding week option:', weekKey, '→', option.textContent);
         selector.appendChild(option);
       });
       
@@ -489,19 +492,21 @@
         filteredData = allRegistrationsData.filter(reg => {
           const regDate = new Date(reg.created_at);
           const regShabbat = getShabbatWeekStart(regDate);
-          console.log('Registration date:', regDate, 'Shabbat week:', regShabbat); // Debug log
-          return regShabbat.getTime() === currentShabbat.getTime();
+          const match = regShabbat.toISOString().split('T')[0] === currentShabbat.toISOString().split('T')[0];
+          console.log('Registration:', reg.first_name, 'Date:', regDate, 'Shabbat week:', regShabbat, 'Match:', match);
+          return match;
         });
       } else {
-        // Show selected week
-        const selectedDate = new Date(selectedWeek);
-        console.log('Selected week date:', selectedDate); // Debug log
+        // Show selected week - use string comparison to avoid timezone issues
+        console.log('Selected week key:', selectedWeek); 
         
         filteredData = allRegistrationsData.filter(reg => {
           const regDate = new Date(reg.created_at);
           const regShabbat = getShabbatWeekStart(regDate);
-          console.log('Registration date:', regDate, 'Reg Shabbat:', regShabbat, 'Selected:', selectedDate); // Debug log
-          return regShabbat.getTime() === selectedDate.getTime();
+          const regWeekKey = regShabbat.toISOString().split('T')[0];
+          const match = regWeekKey === selectedWeek;
+          console.log('Registration:', reg.first_name, 'Date:', regDate, 'Reg week key:', regWeekKey, 'Selected:', selectedWeek, 'Match:', match);
+          return match;
         });
       }
       
@@ -521,9 +526,13 @@
         displayDate = getShabbatWeekStart(new Date());
         title = 'Current Shabbat Attendees';
       } else {
-        displayDate = new Date(selectedWeek);
+        // Parse the selected week key (YYYY-MM-DD format) and create date in local timezone
+        const [year, month, day] = selectedWeek.split('-').map(Number);
+        displayDate = new Date(year, month - 1, day); // month is 0-indexed
         title = 'Shabbat Attendees';
       }
+      
+      console.log('Display date:', displayDate, 'for selected week:', selectedWeek);
       
       document.getElementById('shabbatWeekTitle').textContent = title;
       document.getElementById('shabbatDate').textContent = `Week of ${displayDate.toLocaleDateString()}`;
