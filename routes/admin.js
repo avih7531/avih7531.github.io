@@ -122,6 +122,39 @@ router.get('/admin/registrations', verifyAdminToken, async (req, res) => {
 });
 
 /**
+ * Delete a specific registration (admin only)
+ */
+router.delete('/admin/registrations/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Registration ID is required' 
+      });
+    }
+    
+    console.log(`Admin requesting deletion of registration ID: ${id}`);
+    
+    const result = await supabaseService.deleteShabbatRegistration(id);
+    
+    if (result.success) {
+      console.log(`Successfully deleted registration ID: ${id}`);
+      res.json(result);
+    } else {
+      throw new Error('Failed to delete registration');
+    }
+  } catch (error) {
+    console.error('Error deleting registration:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete registration: ' + error.message 
+    });
+  }
+});
+
+/**
  * Admin logout (optional - removes token from valid tokens)
  */
 router.post('/admin/logout', verifyAdminToken, (req, res) => {

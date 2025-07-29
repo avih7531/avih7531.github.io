@@ -128,10 +128,44 @@ async function getAllShabbatRegistrations() {
   }
 }
 
+/**
+ * Delete a specific Shabbat registration
+ * @param {number} id - Registration ID to delete
+ * @returns {Promise<Object>} - Deletion result
+ */
+async function deleteShabbatRegistration(id) {
+  try {
+    console.log('Deleting Shabbat registration with ID:', id);
+    
+    const { data, error } = await supabase
+      .from('YP_Shabbos')
+      .delete()
+      .eq('id', id)
+      .select();
+    
+    if (error) {
+      console.error('Supabase error during deletion:', error);
+      throw error;
+    }
+    
+    if (!data || data.length === 0) {
+      throw new Error('Registration not found or already deleted');
+    }
+    
+    console.log('Successfully deleted registration:', data[0]);
+    return { success: true, data };
+    
+  } catch (error) {
+    console.error('Error deleting Shabbat registration:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   addShabbatRegistration,
   nameExists,
   getAllShabbatRegistrations,
+  deleteShabbatRegistration,
   capitalizeName,
   supabase
 }; 

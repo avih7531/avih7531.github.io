@@ -130,11 +130,43 @@
     .new-indicator {
       font-size: 18px;
       text-align: center;
+      font-weight: bold;
+    }
+
+    .new-indicator.new-yes {
+      color: #28a745;
+    }
+
+    .new-indicator.new-no {
+      color: #dc3545;
     }
 
     .donation-amount {
       font-weight: bold;
+    }
+
+    .donation-amount.has-donation {
       color: #28a745;
+    }
+
+    .btn-delete {
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .btn-delete:hover {
+      background-color: #c82333;
+    }
+
+    .actions-column {
+      width: 80px;
+      text-align: center;
     }
 
     .error {
@@ -260,6 +292,7 @@
               <th>New</th>
               <th>Donation</th>
               <th>Registered At</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="registrationsBody">
@@ -344,16 +377,22 @@
       tbody.innerHTML = '';
       
       if (registrations.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px;">No registrations found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No registrations found</td></tr>';
       } else {
         registrations.forEach(reg => {
+          const donationAmount = parseFloat(reg.donation_amount || 0);
+          const hasDonation = donationAmount > 0;
+          
           const row = document.createElement('tr');
           row.innerHTML = `
             <td>${reg.first_name} ${reg.last_name}</td>
             <td>${reg.email}</td>
-            <td class="new-indicator">${reg.new ? '✓' : '✗'}</td>
-            <td class="donation-amount">$${parseFloat(reg.donation_amount || 0).toFixed(2)}</td>
+            <td class="new-indicator ${reg.new ? 'new-yes' : 'new-no'}">${reg.new ? '✓' : '✗'}</td>
+            <td class="donation-amount ${hasDonation ? 'has-donation' : ''}">$${donationAmount.toFixed(2)}</td>
             <td>${new Date(reg.created_at).toLocaleString()}</td>
+            <td class="actions-column">
+              <button class="btn-delete" onclick="deleteRegistration(${reg.id}, '${reg.first_name} ${reg.last_name}')">Delete</button>
+            </td>
           `;
           tbody.appendChild(row);
         });
@@ -421,6 +460,32 @@
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+    }
+
+    async function deleteRegistration(id, name) {
+      if (!confirm(`Are you sure you want to delete the registration for ${name}?`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/admin/registrations/${id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert(`Registration for ${name} has been deleted.`);
+          refreshData(); // Reload the data
+        } else {
+          alert('Failed to delete registration: ' + data.message);
+        }
+      } catch (error) {
+        alert('Error deleting registration: ' + error.message);
+      }
     }
   </script>
 </body>
