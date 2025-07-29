@@ -209,15 +209,6 @@
       color: #666;
       margin-top: 5px;
     }
-
-    .logout-btn {
-      background-color: #dc3545;
-      float: right;
-    }
-
-    .logout-btn:hover {
-      background-color: #c82333;
-    }
   </style>
 </head>
 <body>
@@ -246,7 +237,6 @@
     <div id="dashboardSection" class="dashboard">
       <div class="header">
         <h1>🕯️ Shabbat Registrations</h1>
-        <button class="btn logout-btn" onclick="logout()">Logout</button>
       </div>
 
       <!-- Statistics -->
@@ -339,14 +329,6 @@
     function showDashboard() {
       document.getElementById('loginSection').style.display = 'none';
       document.getElementById('dashboardSection').style.display = 'block';
-    }
-
-    function logout() {
-      authToken = null;
-      document.getElementById('loginSection').style.display = 'block';
-      document.getElementById('dashboardSection').style.display = 'none';
-      document.getElementById('password').value = '';
-      document.getElementById('loginError').innerHTML = '';
     }
 
     async function loadRegistrations() {
