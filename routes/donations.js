@@ -68,7 +68,7 @@ router.post('/create-shabbat-session', async (req, res) => {
     
     const amount = parseFloat(donationAmount) || 0;
     
-    // If donation is $0, skip Stripe and redirect directly
+    // If donation is $0, redirect directly to external signup
     if (amount === 0) {
       console.log(`Free Shabbat registration for ${firstName} ${lastName} (${email})`);
       

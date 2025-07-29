@@ -134,9 +134,9 @@ async function createShabbatRegistrationSession(registrationDetails, origin) {
   // Ensure origin doesn't end with a slash
   const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin;
   
-  // For Shabbat registrations, redirect to external signup after payment
-  // Using placeholder YouTube URL as requested
-  const successUrl = 'https://www.youtube.com';
+  // For Shabbat registrations, redirect to donation-success page with special parameters
+  // This will show donation success AND open external link in new tab
+  const successUrl = `${baseUrl}/donation-success.html?donation=true&type=shabbat-registration&shabbat=true`;
   const cancelUrl = `${baseUrl}/yp/shabbat/register.html`;
   
   console.log('Shabbat registration success URL:', successUrl);

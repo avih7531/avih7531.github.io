@@ -166,14 +166,13 @@
     .amount-options {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 15px;
       margin-bottom: 20px;
+      align-items: center;
     }
     
     .amount-option {
       position: relative;
-      flex: 1;
-      min-width: 100px;
     }
     
     .amount-option input[type="radio"] {
@@ -185,12 +184,13 @@
     
     .amount-option label {
       display: block;
-      padding: 15px 10px;
+      padding: 15px 25px;
       text-align: center;
       border: 2px solid #ddd;
       border-radius: 5px;
       cursor: pointer;
       transition: all 0.3s ease;
+      white-space: nowrap;
     }
     
     .amount-option input[type="radio"]:checked + label {
@@ -250,15 +250,6 @@
     .shabbat-info h3 {
       color: #003366;
       margin-bottom: 10px;
-    }
-
-    .zero-option {
-      background-color: #e8f5e8 !important;
-      border-color: #28a745 !important;
-    }
-
-    .zero-option:hover {
-      background-color: #d4edda !important;
     }
 
     footer {
@@ -363,29 +354,13 @@
           <label>Optional Donation Amount:</label>
           <div class="amount-options">
             <div class="amount-option">
-              <input type="radio" name="amount" id="amount0" value="0" checked>
-              <label for="amount0" class="zero-option">Free Registration</label>
+              <input type="radio" name="amount" id="amount36" value="36">
+              <label for="amount36">$36</label>
             </div>
-            <div class="amount-option">
-              <input type="radio" name="amount" id="amount1" value="18">
-              <label for="amount1">$18</label>
+            <div class="form-group">
+              <label for="customAmount">Or enter a custom amount:</label>
+              <input type="number" id="customAmount" class="form-control custom-amount" placeholder="$ Custom amount" min="1">
             </div>
-            <div class="amount-option">
-              <input type="radio" name="amount" id="amount2" value="36">
-              <label for="amount2">$36</label>
-            </div>
-            <div class="amount-option">
-              <input type="radio" name="amount" id="amount3" value="54">
-              <label for="amount3">$54</label>
-            </div>
-            <div class="amount-option">
-              <input type="radio" name="amount" id="amount4" value="72">
-              <label for="amount4">$72</label>
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="customAmount">Or enter a custom donation amount:</label>
-            <input type="number" id="customAmount" class="form-control custom-amount" placeholder="$ Custom amount (optional)" min="0">
           </div>
         </div>
         
@@ -427,6 +402,24 @@
     // Initialize Stripe
     const stripe = Stripe('pk_live_51PT3twJb8qwjsbroMOD3Gwg9dLFKTt1C7kBaJdQH8V542RSMcYy3RJYzieEx6qNYqG4xodI4f1a35YjG1j9z8zgG00778gmwjL');
     
+    // Interactive behavior between $36 button and custom input
+    const amount36Radio = document.getElementById('amount36');
+    const customAmountInput = document.getElementById('customAmount');
+    
+    // When $36 is selected, clear custom input
+    amount36Radio.addEventListener('change', function() {
+      if (this.checked) {
+        customAmountInput.value = '';
+      }
+    });
+    
+    // When custom amount is typed, unselect $36
+    customAmountInput.addEventListener('input', function() {
+      if (this.value.trim() !== '') {
+        amount36Radio.checked = false;
+      }
+    });
+    
     // Form submission handler
     document.getElementById('shabbatForm').addEventListener('submit', async function(e) {
       e.preventDefault();
@@ -438,18 +431,17 @@
       
       try {
         // Get form data
-        let donationAmount;
+        let donationAmount = 0;
         
-        if (document.getElementById('customAmount').value) {
-          donationAmount = parseFloat(document.getElementById('customAmount').value);
-        } else {
-          const selectedAmount = document.querySelector('input[name="amount"]:checked');
-          donationAmount = selectedAmount ? parseFloat(selectedAmount.value) : 0;
+        if (amount36Radio.checked) {
+          donationAmount = 36;
+        } else if (customAmountInput.value.trim() !== '') {
+          donationAmount = parseFloat(customAmountInput.value);
         }
         
-        // Allow 0 amount for free registration
-        if (isNaN(donationAmount) || donationAmount < 0) {
-          alert('Please select a valid amount (free registration is allowed).');
+        // Validation for custom amount
+        if (customAmountInput.value.trim() !== '' && (isNaN(donationAmount) || donationAmount < 1)) {
+          alert('Please enter a valid donation amount (minimum $1).');
           submitButton.disabled = false;
           submitButton.textContent = 'Register for Shabbat';
           return;

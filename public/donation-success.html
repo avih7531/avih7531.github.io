@@ -395,6 +395,7 @@
       const urlParams = new URLSearchParams(window.location.search);
       const isDonation = urlParams.get('donation') === 'true';
       const donationType = urlParams.get('type') || 'one-time';
+      const isShabbat = urlParams.get('shabbat') === 'true';
       
       // Default messages
       let heading = "Thank You for Your Support!";
@@ -410,6 +411,16 @@
         } else if (donationType === 'sponsor') {
           heading = "Thank You for Sponsoring a Student!";
           message = "Your sponsorship donation to Rejewvenate has been successfully processed.";
+        } else if (donationType === 'shabbat-registration') {
+          heading = "Thank You for Your Shabbat Donation!";
+          message = "Your donation with Shabbat registration has been successfully processed.";
+          
+          // Add additional message for Shabbat registration
+          if (messageElement) {
+            const additionalMessage = document.createElement('p');
+            additionalMessage.textContent = "You're all set for Shabbat! We're now redirecting you to complete your registration.";
+            messageElement.parentNode.insertBefore(additionalMessage, messageElement.nextSibling);
+          }
         }
         
         // Update the heading and message
@@ -419,10 +430,18 @@
         }
       }
 
+      // For Shabbat registrations, automatically open external link in new tab
+      if (isShabbat) {
+        setTimeout(() => {
+          window.open('https://www.youtube.com', '_blank');
+        }, 2000); // Wait 2 seconds to let user see the success message
+      }
+
       // Log for debugging
       console.log('Donation success page loaded with params:', {
         isDonation,
-        donationType
+        donationType,
+        isShabbat
       });
     });
   </script>
