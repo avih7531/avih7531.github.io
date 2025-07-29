@@ -95,10 +95,10 @@ router.post('/create-shabbat-session', async (req, res) => {
     if (amount === 0) {
       console.log(`Free Shabbat registration for ${firstName} ${lastName} (${email})`);
       
-      // For free registrations, redirect directly to external signup (placeholder: YouTube)
+      // For free registrations, redirect to confirmation page
       return res.json({
         success: true,
-        redirectUrl: 'https://www.youtube.com' // Placeholder redirect URL
+        redirectUrl: '/yp/shabbat/confirmation' // Updated redirect URL
       });
     }
     

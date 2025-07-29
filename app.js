@@ -43,6 +43,11 @@ app.get('/yp/shabbat/register', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'yp', 'shabbat', 'register.html'));
 });
 
+// Add route for Shabbat confirmation
+app.get('/yp/shabbat/confirmation', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'yp', 'shabbat', 'confirmation.html'));
+});
+
 // Add route for admin dashboard
 app.get('/admin/dashboard', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html'));

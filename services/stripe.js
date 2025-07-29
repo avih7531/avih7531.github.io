@@ -134,9 +134,8 @@ async function createShabbatRegistrationSession(registrationDetails, origin) {
   // Ensure origin doesn't end with a slash
   const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin;
   
-  // For Shabbat registrations, redirect to donation-success page with special parameters
-  // This will show donation success AND open external link in new tab
-  const successUrl = `${baseUrl}/donation-success.html?donation=true&type=shabbat-registration&shabbat=true`;
+  // For Shabbat registrations, redirect to confirmation page with donation info
+  const successUrl = `${baseUrl}/yp/shabbat/confirmation?donation=true&amount=${donationAmount}`;
   const cancelUrl = `${baseUrl}/yp/shabbat/register.html`;
   
   console.log('Shabbat registration success URL:', successUrl);
