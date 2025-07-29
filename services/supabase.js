@@ -5,11 +5,11 @@ const { createClient } = require('@supabase/supabase-js');
 
 // Initialize Supabase client
 const supabaseUrl = 'https://xhlgfpnsiaqfbgtwjrbl.supabase.co';
-const supabaseKey = process.env.SUPABASE_APIKEY;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE;
 
 if (!supabaseKey) {
-  console.error('Missing SUPABASE_APIKEY environment variable');
-  throw new Error('Supabase API key is required');
+  console.error('Missing SUPABASE_SERVICE_ROLE environment variable');
+  throw new Error('Supabase service role key is required');
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -44,37 +44,47 @@ async function addShabbatRegistration(registrationData) {
   const capitalizedFirstName = capitalizeName(firstName.trim());
   const capitalizedLastName = capitalizeName(lastName.trim());
   
+  console.log('=== SUPABASE DEBUG ===');
+  console.log('Supabase URL:', 'https://xhlgfpnsiaqfbgtwjrbl.supabase.co');
+  console.log('Service Role Key available:', !!process.env.SUPABASE_SERVICE_ROLE);
+  console.log('Service Role Key length:', process.env.SUPABASE_SERVICE_ROLE ? process.env.SUPABASE_SERVICE_ROLE.length : 'undefined');
+  
+  const insertData = {
+    first_name: capitalizedFirstName,
+    last_name: capitalizedLastName,
+    email: email.toLowerCase().trim(),
+    donation_amount: parseFloat(donationAmount),
+    new: isNew
+  };
+  
+  console.log('Data to insert:', insertData);
+  
   try {
-    console.log('Adding Shabbat registration to database:', { 
-      firstName: capitalizedFirstName, 
-      lastName: capitalizedLastName, 
-      email, 
-      donationAmount 
-    });
+    console.log('Attempting to insert into YP_Shabbos table...');
     
     const { data, error } = await supabase
       .from('YP_Shabbos')
-      .insert([
-        {
-          first_name: capitalizedFirstName,
-          last_name: capitalizedLastName,
-          email: email.toLowerCase().trim(),
-          donation_amount: parseFloat(donationAmount),
-          new: isNew
-        }
-      ])
+      .insert([insertData])
       .select();
     
+    console.log('Supabase response - data:', data);
+    console.log('Supabase response - error:', error);
+    
     if (error) {
-      console.error('Supabase error:', error);
+      console.error('Supabase error details:', JSON.stringify(error, null, 2));
       throw error;
     }
     
     console.log('Successfully added Shabbat registration:', data);
+    console.log('=== END SUPABASE DEBUG ===');
     return { success: true, data };
     
   } catch (error) {
+    console.error('=== SUPABASE ERROR ===');
     console.error('Error adding Shabbat registration:', error);
+    console.error('Error message:', error.message);
+    console.error('Error details:', JSON.stringify(error, null, 2));
+    console.error('=== END SUPABASE ERROR ===');
     throw error;
   }
 }

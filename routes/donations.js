@@ -75,17 +75,20 @@ router.post('/create-shabbat-session', async (req, res) => {
     
     // Add registration to database regardless of donation amount
     try {
-      await supabaseService.addShabbatRegistration({
+      const dbResult = await supabaseService.addShabbatRegistration({
         firstName,
         lastName,
         email,
         donationAmount: amount,
         isNew: isNewRegistration
       });
+      console.log('Database insertion successful:', dbResult);
     } catch (dbError) {
       console.error('Database error during Shabbat registration:', dbError);
-      // Continue with the process even if database fails, but log the error
-      // You might want to change this behavior based on your requirements
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Failed to save registration to database: ' + dbError.message 
+      });
     }
     
     // If donation is $0, redirect directly to external signup
