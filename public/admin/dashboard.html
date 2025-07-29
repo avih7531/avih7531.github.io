@@ -413,20 +413,26 @@
     function getShabbatWeekStart(date) {
       // Get the Friday of the week containing the given date
       const d = new Date(date);
-      const dayOfWeek = d.getDay(); // 0 = Sunday, 5 = Friday
-      const daysToFriday = (5 - dayOfWeek + 7) % 7;
-      if (dayOfWeek > 5) { // If Saturday (6) or Sunday (0), move to next Friday
-        d.setDate(d.getDate() + (5 - dayOfWeek + 7));
-      } else {
-        d.setDate(d.getDate() + daysToFriday);
+      const dayOfWeek = d.getDay(); // 0 = Sunday, 1 = Monday, ..., 5 = Friday, 6 = Saturday
+      
+      // Calculate days to get to Friday
+      let daysToFriday;
+      if (dayOfWeek <= 5) { // Sunday through Friday
+        daysToFriday = 5 - dayOfWeek;
+      } else { // Saturday
+        daysToFriday = 6; // Go to next Friday
       }
-      d.setHours(0, 0, 0, 0);
-      return d;
+      
+      const friday = new Date(d);
+      friday.setDate(d.getDate() + daysToFriday);
+      friday.setHours(0, 0, 0, 0);
+      return friday;
     }
 
     function populateWeekSelector() {
       const selector = document.getElementById('weekSelector');
       const weeks = new Map();
+      const currentSelection = selectedWeek; // Preserve current selection
       
       // Group registrations by Shabbat week
       allRegistrationsData.forEach(reg => {
@@ -448,11 +454,11 @@
         new Date(b[1].date) - new Date(a[1].date)
       );
       
-      // Clear existing options except current
+      // Clear existing options
       selector.innerHTML = '<option value="current">Current Week</option>';
       
       // Add week options
-      sortedWeeks.forEach(([weekKey, weekData], index) => {
+      sortedWeeks.forEach(([weekKey, weekData]) => {
         const option = document.createElement('option');
         option.value = weekKey;
         const weekLabel = weekData.date.toLocaleDateString('en-US', { 
@@ -461,36 +467,45 @@
           year: 'numeric' 
         });
         option.textContent = `Week of ${weekLabel} (${weekData.count} registrations)`;
-        
-        // Set as selected if it's the most recent week with data
-        if (index === 0 && selectedWeek === 'current') {
-          option.selected = true;
-          selectedWeek = weekKey;
-        }
-        
         selector.appendChild(option);
       });
+      
+      // Restore previous selection
+      selector.value = currentSelection;
+      selectedWeek = currentSelection;
     }
 
     function filterDataByWeek() {
       let filteredData;
       
+      console.log('Filtering by week:', selectedWeek); // Debug log
+      
       if (selectedWeek === 'current') {
         // Show upcoming/current week
         const now = new Date();
         const currentShabbat = getShabbatWeekStart(now);
+        console.log('Current Shabbat week start:', currentShabbat); // Debug log
+        
         filteredData = allRegistrationsData.filter(reg => {
-          const regShabbat = getShabbatWeekStart(new Date(reg.created_at));
+          const regDate = new Date(reg.created_at);
+          const regShabbat = getShabbatWeekStart(regDate);
+          console.log('Registration date:', regDate, 'Shabbat week:', regShabbat); // Debug log
           return regShabbat.getTime() === currentShabbat.getTime();
         });
       } else {
         // Show selected week
-        const weekStart = new Date(selectedWeek);
+        const selectedDate = new Date(selectedWeek);
+        console.log('Selected week date:', selectedDate); // Debug log
+        
         filteredData = allRegistrationsData.filter(reg => {
-          const regShabbat = getShabbatWeekStart(new Date(reg.created_at));
-          return regShabbat.getTime() === weekStart.getTime();
+          const regDate = new Date(reg.created_at);
+          const regShabbat = getShabbatWeekStart(regDate);
+          console.log('Registration date:', regDate, 'Reg Shabbat:', regShabbat, 'Selected:', selectedDate); // Debug log
+          return regShabbat.getTime() === selectedDate.getTime();
         });
       }
+      
+      console.log('Filtered data count:', filteredData.length); // Debug log
       
       registrationsData = filteredData;
       displayRegistrations(registrationsData);
@@ -543,14 +558,16 @@
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
       
-      // Include selected week in filename
-      let weekLabel = 'current';
-      if (selectedWeek !== 'current') {
-        const weekDate = new Date(selectedWeek);
-        weekLabel = weekDate.toISOString().split('T')[0];
+      // Get the Shabbat week date for filename
+      let shabbatDate;
+      if (selectedWeek === 'current') {
+        shabbatDate = getShabbatWeekStart(new Date());
+      } else {
+        shabbatDate = new Date(selectedWeek);
       }
       
-      link.setAttribute('download', `shabbat-registrations-${weekLabel}-${new Date().toISOString().split('T')[0]}.csv`);
+      const shabbatDateString = shabbatDate.toISOString().split('T')[0];
+      link.setAttribute('download', `shabbat-registrations-${shabbatDateString}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
