@@ -192,28 +192,29 @@
       margin-top: 20px;
       padding-top: 20px;
       border-top: 2px solid #f0f0f0;
+      text-align: center;
     }
 
     .custom-amount-section h3 {
       color: #003366;
-      margin-bottom: 15px;
+      margin-bottom: 20px;
       font-size: 1.1rem;
     }
 
     .custom-amount-input {
       display: flex;
-      gap: 10px;
+      gap: 15px;
       justify-content: center;
       align-items: center;
       margin-bottom: 20px;
     }
 
     .custom-amount-input input {
-      padding: 12px 16px;
+      padding: 16px 20px;
       border: 2px solid #ddd;
-      border-radius: 6px;
-      font-size: 1rem;
-      width: 150px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      width: 180px;
       text-align: center;
       transition: border-color 0.3s ease;
     }
@@ -228,14 +229,14 @@
     }
 
     .custom-donate-btn {
-      padding: 12px 24px;
+      padding: 16px 28px;
       background: linear-gradient(135deg, #004080 0%, #002244 100%);
       color: white;
       border: none;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
       font-weight: bold;
-      font-size: 1rem;
+      font-size: 1.1rem;
       transition: all 0.3s ease;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
     }
@@ -390,7 +391,7 @@
           <input 
             type="number" 
             id="customAmount" 
-            placeholder="$ Custom amount"
+            placeholder="Enter amount"
             min="1"
             step="0.01"
             oninput="handleCustomAmountInput()"
