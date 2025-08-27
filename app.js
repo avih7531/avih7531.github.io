@@ -59,6 +59,7 @@ const htmlPages = [
   'team',
   'contact',
   'donate',
+  'simple-donate',
   'donation-success'
 ];
 
