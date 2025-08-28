@@ -360,16 +360,16 @@
   </header>
 
   <div class="hero">
-    <h1>Donation Successful</h1>
-    <p>Thank you for your generosity</p>
+    <h1 id="heroTitle">Donation Successful</h1>
+    <p id="heroSubtitle">Thank you for your generosity</p>
   </div>
   
   <div class="success-container">
     <div class="success-icon"></div>
-    <h1>Thank You for Your Support!</h1>
-    <p>Your donation to Rejewvenate has been successfully processed.</p>
-    <p>Your contribution helps us create a home away from home for Jewish students on campus. We are deeply grateful for your support and generosity.</p>
-    <p>A receipt has been sent to your email address.</p>
+    <h1 id="mainTitle">Thank You for Your Support!</h1>
+    <p id="mainMessage">Your donation to Rejewvenate has been successfully processed.</p>
+    <p id="description">Your contribution helps us create a home away from home for Jewish students on campus. We are deeply grateful for your support and generosity.</p>
+    <p id="receiptMessage">A receipt has been sent to your email address.</p>
     <a href="index.html" class="btn">Return to Homepage</a>
   </div>
 
@@ -396,15 +396,32 @@
       // Get URL parameters
       const urlParams = new URLSearchParams(window.location.search);
       const isDonation = urlParams.get('donation') === 'true';
+      const isFree = urlParams.get('free') === 'true';
       const donationType = urlParams.get('type') || 'one-time';
       
-      // Default messages
-      let heading = "Thank You for Your Support!";
-      let message = "Your donation to Rejewvenate has been successfully processed.";
+      // Handle free registration
+      if (isFree) {
+        // Update hero section
+        document.getElementById('heroTitle').textContent = 'Registration Complete!';
+        document.getElementById('heroSubtitle').textContent = 'You\'re all good to go!';
+        
+        // Update main content
+        document.getElementById('mainTitle').textContent = 'You\'re All Set!';
+        document.getElementById('mainMessage').textContent = 'Your free registration with Rejewvenate has been completed successfully.';
+        document.getElementById('description').textContent = 'Welcome to our community! We\'re excited to have you join us for meaningful Jewish experiences on campus.';
+        document.getElementById('receiptMessage').textContent = 'No payment was required for your registration.';
+        
+        // Change button text
+        document.querySelector('.btn').textContent = 'Return to Homepage';
+        
+        console.log('Free registration success page loaded');
+        return;
+      }
       
-      // Customize based on donation type
+      // Handle paid donations
       if (isDonation) {
-        const messageElement = document.querySelector('.success-container p');
+        let heading = "Thank You for Your Support!";
+        let message = "Your donation to Rejewvenate has been successfully processed.";
         
         if (donationType === 'recurring') {
           heading = "Thank You for Your Monthly Support!";
@@ -415,15 +432,14 @@
         }
         
         // Update the heading and message
-        document.querySelector('.success-container h1').textContent = heading;
-        if (messageElement) {
-          messageElement.textContent = message;
-        }
+        document.getElementById('mainTitle').textContent = heading;
+        document.getElementById('mainMessage').textContent = message;
       }
 
       // Log for debugging
       console.log('Donation success page loaded with params:', {
         isDonation,
+        isFree,
         donationType
       });
     });

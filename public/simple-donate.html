@@ -175,7 +175,7 @@
 
     .amount-btn {
       padding: 18px 24px;
-      background: linear-gradient(135deg, #004080 0%, #002244 100%);
+      background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
       color: white;
       border: none;
       border-radius: 8px;
@@ -190,7 +190,7 @@
     }
 
     .amount-btn:hover {
-      background: linear-gradient(135deg, #00509e 0%, #003366 100%);
+      background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
       transform: translateY(-1px);
     }
@@ -277,6 +277,20 @@
       transform: none;
       box-shadow: none;
       color: #666;
+    }
+
+    .suggested-amount {
+      margin-top: 30px;
+      text-align: center;
+    }
+
+    .suggested-btn {
+      background: linear-gradient(135deg, #004080 0%, #002244 100%);
+      max-width: 250px;
+    }
+
+    .suggested-btn:hover {
+      background: linear-gradient(135deg, #00509e 0%, #003366 100%);
     }
 
     footer {
@@ -410,42 +424,48 @@
     <p>Your donation helps us create meaningful Jewish experiences for college students</p>
   </div>
 
-  <div class="donate-container">
-    <h2>Make a Donation</h2>
-    <p>Please consider choosing from our optional suggested $54 donation or enter your own custom amount below.</p>
-    
-          <div class="donation-options">
-        <button class="amount-btn" id="fiftyFourBtn" onclick="donateAmount(54)">
-          Donate $54
-        </button>
+        <div class="donate-container">
+        <h2>Make a Donation</h2>
+        <p>Please proceed with no cost or consider an optional donation of $54 or an amount of your choosing.</p>
         
-        <div class="divider">
-          OR
-        </div>
-        
-        <div class="custom-amount-section">
-          <h3>Enter Custom Amount</h3>
-          <div class="custom-amount-input">
-            <input 
-              type="number" 
-              id="customAmount" 
-              placeholder="Enter amount"
-              min="1"
-              step="0.01"
-              oninput="handleCustomAmountInput()"
-            >
-            <button 
-              class="custom-donate-btn" 
-              id="customDonateBtn" 
-              onclick="donateCustomAmount()"
-              disabled
-            >
-              Donate
-            </button>
+        <div class="donation-options">
+          <button class="amount-btn" id="zeroBtn" onclick="donateAmount(0)">
+            Proceed
+          </button>
+          
+          <div class="divider">
+            OR
+          </div>
+          
+          <div class="custom-amount-section">
+            <h3>Enter Custom Amount</h3>
+            <div class="custom-amount-input">
+              <input 
+                type="number" 
+                id="customAmount" 
+                placeholder="Enter amount"
+                min="0"
+                step="0.01"
+                oninput="handleCustomAmountInput()"
+              >
+              <button 
+                class="custom-donate-btn" 
+                id="customDonateBtn" 
+                onclick="donateCustomAmount()"
+                disabled
+              >
+                Donate
+              </button>
+            </div>
           </div>
         </div>
+        
+        <div class="suggested-amount">
+          <button class="amount-btn suggested-btn" id="fiftyFourBtn" onclick="donateAmount(54)">
+            Suggested: Donate $54
+          </button>
+        </div>
       </div>
-  </div>
 
   <footer>
     <div class="socials">
@@ -522,17 +542,24 @@
       const customAmount = document.getElementById('customAmount');
       const amount = parseFloat(customAmount.value);
       
-      if (amount && amount > 0) {
+      if (amount >= 0) {
         processDonation(amount);
       } else {
-        alert('Please enter a valid amount.');
+        alert('Please enter a valid amount (0 or greater).');
       }
     }
     
     // Process donation through Stripe
     async function processDonation(amount) {
       try {
-        // Create form data object
+        // If amount is 0, redirect directly to success page
+        if (amount === 0) {
+          console.log('Proceeding with free registration');
+          window.location.href = '/donation-success.html?free=true';
+          return;
+        }
+        
+        // Create form data object for paid donations
         const formData = {
           donationAmount: amount,
           donationType: 'one-time',
