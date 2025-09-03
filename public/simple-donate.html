@@ -293,6 +293,58 @@
       background: linear-gradient(135deg, #00509e 0%, #003366 100%);
     }
 
+    .form-section {
+      margin-bottom: 30px;
+      text-align: left;
+    }
+
+    .form-section h3 {
+      color: #003366;
+      margin-bottom: 20px;
+      font-size: 1.2rem;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #333;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      background: white;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #004080;
+      box-shadow: 0 0 0 2px rgba(0, 64, 128, 0.1);
+    }
+
+    .form-group input::placeholder {
+      color: #999;
+    }
+
     footer {
       background: linear-gradient(135deg, #004080 0%, #002244 100%);
       position: relative;
@@ -425,46 +477,88 @@
   </div>
 
         <div class="donate-container">
-        <h2>Make a Donation</h2>
+        <h2>Rosh Hashana Registration</h2>
         <p>Please proceed with no cost or consider an optional donation of $54 or an amount of your choosing.</p>
         
-        <div class="donation-options">
-          <button class="amount-btn" id="zeroBtn" onclick="donateAmount(0)">
-            Proceed
-          </button>
-          
-          <div class="divider">
-            OR
+        <form id="registrationForm">
+          <div class="form-section">
+            <h3>Your Information</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="firstName">First Name *</label>
+                <input 
+                  type="text" 
+                  id="firstName" 
+                  name="firstName" 
+                  required
+                  placeholder="Enter your first name"
+                >
+              </div>
+              <div class="form-group">
+                <label for="lastName">Last Name *</label>
+                <input 
+                  type="text" 
+                  id="lastName" 
+                  name="lastName" 
+                  required
+                  placeholder="Enter your last name"
+                >
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="email">Email Address *</label>
+              <input 
+                type="email" 
+                id="email" 
+                name="email" 
+                required
+                placeholder="Enter your email address"
+              >
+            </div>
           </div>
           
-          <div class="custom-amount-section">
-            <h3>Enter Custom Amount</h3>
-            <div class="custom-amount-input">
-              <input 
-                type="number" 
-                id="customAmount" 
-                placeholder="Enter amount"
-                min="0"
-                step="0.01"
-                oninput="handleCustomAmountInput()"
-              >
-              <button 
-                class="custom-donate-btn" 
-                id="customDonateBtn" 
-                onclick="donateCustomAmount()"
-                disabled
-              >
-                Donate
+          <div class="form-section">
+            <h3>Donation (Optional)</h3>
+            <div class="donation-options">
+              <button type="button" class="amount-btn" id="zeroBtn" onclick="donateAmount(0)">
+                Proceed Free
+              </button>
+              
+              <div class="divider">
+                OR
+              </div>
+              
+              <div class="custom-amount-section">
+                <h4>Enter Custom Amount</h4>
+                <div class="custom-amount-input">
+                  <input 
+                    type="number" 
+                    id="customAmount" 
+                    placeholder="Enter amount"
+                    min="0"
+                    step="0.01"
+                    oninput="handleCustomAmountInput()"
+                  >
+                  <button 
+                    type="button"
+                    class="custom-donate-btn" 
+                    id="customDonateBtn" 
+                    onclick="donateCustomAmount()"
+                    disabled
+                  >
+                    Donate
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div class="suggested-amount">
+              <button type="button" class="amount-btn suggested-btn" id="fiftyFourBtn" onclick="donateAmount(54)">
+                Suggested: Donate $54
               </button>
             </div>
           </div>
-        </div>
-        
-        <div class="suggested-amount">
-          <button class="amount-btn suggested-btn" id="fiftyFourBtn" onclick="donateAmount(54)">
-            Suggested: Donate $54
-          </button>
-        </div>
+        </form>
       </div>
 
   <footer>
@@ -549,13 +643,65 @@
       }
     }
     
+    // Validate form data
+    function validateForm() {
+      const firstName = document.getElementById('firstName').value.trim();
+      const lastName = document.getElementById('lastName').value.trim();
+      const email = document.getElementById('email').value.trim();
+      
+      if (!firstName || !lastName || !email) {
+        alert('Please fill in all required fields (First Name, Last Name, Email).');
+        return false;
+      }
+      
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        alert('Please enter a valid email address.');
+        return false;
+      }
+      
+      return true;
+    }
+    
     // Process donation through Stripe
     async function processDonation(amount) {
       try {
-        // If amount is 0, redirect directly to success page
+        // Validate form first
+        if (!validateForm()) {
+          return;
+        }
+        
+        // Get form data
+        const firstName = document.getElementById('firstName').value.trim();
+        const lastName = document.getElementById('lastName').value.trim();
+        const email = document.getElementById('email').value.trim();
+        
+        // If amount is 0, save to database and redirect to success page
         if (amount === 0) {
           console.log('Proceeding with free registration');
-          window.location.href = '/donation-success.html?free=true';
+          
+          // Save registration to database
+          const registrationData = {
+            firstName,
+            lastName,
+            email,
+            donationAmount: 0
+          };
+          
+          const response = await fetch('/create-rosh-hashana-registration', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(registrationData)
+          });
+          
+          if (response.ok) {
+            window.location.href = '/donation-success.html?free=true';
+          } else {
+            throw new Error('Failed to save registration');
+          }
           return;
         }
         
@@ -563,9 +709,9 @@
         const formData = {
           donationAmount: amount,
           donationType: 'one-time',
-          firstName: 'Anonymous', // Since we don't collect names on this simple page
-          lastName: 'Donor',
-          email: 'anonymous@rejewvenate.com' // Placeholder email
+          firstName,
+          lastName,
+          email
         };
         
         console.log('Processing donation:', formData);
@@ -603,7 +749,7 @@
         }
       } catch (error) {
         console.error('Error:', error);
-        alert('An error occurred while processing your donation. Please try again.');
+        alert('An error occurred while processing your registration. Please try again.');
       }
     }
     

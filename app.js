@@ -27,11 +27,13 @@ app.use('/images', express.static(path.join(__dirname, 'public/images')));
 const donationRoutes = require('./routes/donations');
 const contactRoutes = require('./routes/contact');
 const adminRoutes = require('./routes/admin');
+const roshHashanaRoutes = require('./routes/rosh-hashana');
 
 // Register routes
 app.use(donationRoutes);
 app.use(contactRoutes);
 app.use(adminRoutes);
+app.use(roshHashanaRoutes);
 
 // Serve main HTML pages
 app.get('/', (req, res) => {

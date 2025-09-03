@@ -148,9 +148,36 @@ router.post('/stripe-webhook', bodyParser.raw({ type: 'application/json' }), asy
       const session = event.data.object;
       console.log('Checkout session completed:', session.id);
       
-      // For standard donations, just log the successful completion
-      const amountTotal = session.amount_total / 100; // Convert from cents
-      console.log(`Donation completed: $${amountTotal.toFixed(2)}`);
+      // Get metadata from the session
+      const { firstName, lastName, email, donationAmount } = session.metadata;
+      
+      // If this is a Rosh Hashana registration (has firstName, lastName, email in metadata)
+      if (firstName && lastName && email) {
+        console.log('Processing Rosh Hashana registration from Stripe webhook');
+        
+        try {
+          // Check if person exists in YP_Shabbos
+          const nameAlreadyExists = await supabaseService.nameExists(firstName, lastName);
+          const isNewRegistration = !nameAlreadyExists;
+          
+          // Add to YP_RoshHashana table
+          await supabaseService.addRoshHashanaRegistration({
+            firstName,
+            lastName,
+            email,
+            donationAmount: parseFloat(donationAmount),
+            isNew: isNewRegistration
+          });
+          
+          console.log('Rosh Hashana registration saved successfully from webhook');
+        } catch (error) {
+          console.error('Error saving Rosh Hashana registration from webhook:', error);
+        }
+      } else {
+        // For standard donations, just log the successful completion
+        const amountTotal = session.amount_total / 100; // Convert from cents
+        console.log(`Donation completed: $${amountTotal.toFixed(2)}`);
+      }
     }
     
     res.json({ received: true });

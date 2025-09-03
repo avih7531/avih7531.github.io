@@ -161,11 +161,117 @@ async function deleteShabbatRegistration(id) {
   }
 }
 
+/**
+ * Add a new Rosh Hashana registration to the database
+ * @param {Object} registrationData - Registration data
+ * @param {string} registrationData.firstName - Registrant first name
+ * @param {string} registrationData.lastName - Registrant last name
+ * @param {string} registrationData.email - Registrant email
+ * @param {number} [registrationData.donationAmount=0] - Donation amount
+ * @param {boolean} [registrationData.isNew=true] - Whether this is a new registration
+ * @returns {Promise<Object>} - Database insertion result
+ */
+async function addRoshHashanaRegistration(registrationData) {
+  const { firstName, lastName, email, donationAmount = 0, isNew = true } = registrationData;
+  
+  // Properly capitalize names
+  const capitalizedFirstName = capitalizeName(firstName.trim());
+  const capitalizedLastName = capitalizeName(lastName.trim());
+  
+  const insertData = {
+    first_name: capitalizedFirstName,
+    last_name: capitalizedLastName,
+    email: email.toLowerCase().trim(),
+    donation_amount: parseFloat(donationAmount),
+    new: isNew
+  };
+  
+  try {
+    console.log('Adding Rosh Hashana registration:', capitalizedFirstName, capitalizedLastName, 'Amount:', donationAmount);
+    
+    const { data, error } = await supabase
+      .from('YP_RoshHashana')
+      .insert([insertData])
+      .select();
+    
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
+    
+    console.log('Successfully added Rosh Hashana registration');
+    return { success: true, data };
+    
+  } catch (error) {
+    console.error('Error adding Rosh Hashana registration:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get all Rosh Hashana registrations (for admin purposes)
+ * @returns {Promise<Array>} - Array of registrations
+ */
+async function getAllRoshHashanaRegistrations() {
+  try {
+    const { data, error } = await supabase
+      .from('YP_RoshHashana')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching Rosh Hashana registrations:', error);
+      throw error;
+    }
+    
+    return { success: true, data };
+  } catch (error) {
+    console.error('Error fetching Rosh Hashana registrations:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a specific Rosh Hashana registration
+ * @param {number} id - Registration ID to delete
+ * @returns {Promise<Object>} - Deletion result
+ */
+async function deleteRoshHashanaRegistration(id) {
+  try {
+    console.log('Deleting Rosh Hashana registration with ID:', id);
+    
+    const { data, error } = await supabase
+      .from('YP_RoshHashana')
+      .delete()
+      .eq('id', id)
+      .select();
+    
+    if (error) {
+      console.error('Supabase error during deletion:', error);
+      throw error;
+    }
+    
+    if (!data || data.length === 0) {
+      throw new Error('Registration not found or already deleted');
+    }
+    
+    console.log('Successfully deleted Rosh Hashana registration:', data[0]);
+    return { success: true, data };
+    
+  } catch (error) {
+    console.error('Error deleting Rosh Hashana registration:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   addShabbatRegistration,
   nameExists,
   getAllShabbatRegistrations,
   deleteShabbatRegistration,
+  addRoshHashanaRegistration,
+  getAllRoshHashanaRegistrations,
+  deleteRoshHashanaRegistration,
   capitalizeName,
   supabase
 }; 
