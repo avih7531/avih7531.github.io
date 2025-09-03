@@ -155,6 +155,63 @@ router.delete('/admin/registrations/:id', verifyAdminToken, async (req, res) => 
 });
 
 /**
+ * Get all Rosh Hashana registrations (admin only)
+ */
+router.get('/admin/rosh-hashana-registrations', verifyAdminToken, async (req, res) => {
+  try {
+    console.log('Admin requesting all Rosh Hashana registrations');
+    
+    const result = await supabaseService.getAllRoshHashanaRegistrations();
+    
+    if (result.success) {
+      console.log(`Retrieved ${result.data.length} Rosh Hashana registrations for admin`);
+      res.json(result);
+    } else {
+      throw new Error('Failed to fetch Rosh Hashana registrations');
+    }
+  } catch (error) {
+    console.error('Error fetching admin Rosh Hashana registrations:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch Rosh Hashana registrations: ' + error.message 
+    });
+  }
+});
+
+/**
+ * Delete a specific Rosh Hashana registration (admin only)
+ */
+router.delete('/admin/rosh-hashana-registrations/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Registration ID is required' 
+      });
+    }
+    
+    console.log(`Admin requesting deletion of Rosh Hashana registration ID: ${id}`);
+    
+    const result = await supabaseService.deleteRoshHashanaRegistration(id);
+    
+    if (result.success) {
+      console.log(`Successfully deleted Rosh Hashana registration ID: ${id}`);
+      res.json(result);
+    } else {
+      throw new Error('Failed to delete Rosh Hashana registration');
+    }
+  } catch (error) {
+    console.error('Error deleting Rosh Hashana registration:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete Rosh Hashana registration: ' + error.message 
+    });
+  }
+});
+
+/**
  * Admin logout (optional - removes token from valid tokens)
  */
 router.post('/admin/logout', verifyAdminToken, (req, res) => {

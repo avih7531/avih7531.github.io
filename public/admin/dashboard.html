@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Dashboard - Shabbat Registrations</title>
+  <title>Admin Dashboard - Event Registrations</title>
   <style>
     * {
       margin: 0;
@@ -209,6 +209,67 @@
       color: #666;
       margin-top: 5px;
     }
+
+    .tabs {
+      display: flex;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 15px 20px;
+      background: #f8f9fa;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      color: #666;
+      transition: all 0.3s ease;
+      border-bottom: 3px solid transparent;
+    }
+
+    .tab.active {
+      background: white;
+      color: #003366;
+      border-bottom-color: #003366;
+    }
+
+    .tab:hover:not(.active) {
+      background: #e9ecef;
+      color: #003366;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .year-selector {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .year-selector label {
+      font-weight: bold;
+      color: #003366;
+    }
+
+    .year-selector select {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: white;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -236,64 +297,128 @@
     <!-- Dashboard -->
     <div id="dashboardSection" class="dashboard">
       <div class="header">
-        <h1>🕯️ Shabbat Registrations</h1>
+        <h1>📊 Event Registrations</h1>
+        <p>Manage Shabbat and Rosh Hashana registrations</p>
       </div>
 
-      <!-- Statistics -->
-      <div class="stats">
-        <div class="stat-card">
-          <div class="stat-number" id="totalRegistrations">-</div>
-          <div class="stat-label">Total Registrations</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number" id="newAttendees">-</div>
-          <div class="stat-label">New Attendees</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number" id="totalDonations">-</div>
-          <div class="stat-label">Total Donations</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-number" id="avgDonation">-</div>
-          <div class="stat-label">Avg Donation</div>
-        </div>
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('shabbat')">🕯️ Shabbat</button>
+        <button class="tab" onclick="switchTab('rosh-hashana')">🍎 Rosh Hashana</button>
       </div>
 
-      <!-- Controls -->
-      <div class="controls">
-        <div>
-          <h3 id="shabbatWeekTitle">Upcoming Shabbat Attendees</h3>
-          <p id="shabbatDate">Loading...</p>
-        </div>
-        <div style="display: flex; align-items: center; gap: 15px;">
-          <div>
-            <label for="weekSelector" style="margin-right: 8px; font-weight: bold;">Select Week:</label>
-            <select id="weekSelector" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white;">
-              <option value="current">Current Week</option>
-            </select>
+      <!-- Shabbat Tab Content -->
+      <div id="shabbatTab" class="tab-content active">
+        <!-- Statistics -->
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-number" id="totalRegistrations">-</div>
+            <div class="stat-label">Total Registrations</div>
           </div>
-          <button class="btn" onclick="refreshData()">🔄 Refresh</button>
-          <button class="btn btn-export" onclick="exportCSV()">📊 Export CSV</button>
+          <div class="stat-card">
+            <div class="stat-number" id="newAttendees">-</div>
+            <div class="stat-label">New Attendees</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="totalDonations">-</div>
+            <div class="stat-label">Total Donations</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="avgDonation">-</div>
+            <div class="stat-label">Avg Donation</div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+          <div>
+            <h3 id="shabbatWeekTitle">Upcoming Shabbat Attendees</h3>
+            <p id="shabbatDate">Loading...</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <div>
+              <label for="weekSelector" style="margin-right: 8px; font-weight: bold;">Select Week:</label>
+              <select id="weekSelector" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                <option value="current">Current Week</option>
+              </select>
+            </div>
+            <button class="btn" onclick="refreshData()">🔄 Refresh</button>
+            <button class="btn btn-export" onclick="exportCSV()">📊 Export CSV</button>
+          </div>
+        </div>
+
+        <!-- Registrations Table -->
+        <div class="table-container">
+          <div id="loadingMessage" class="loading">Loading registrations...</div>
+          <table id="registrationsTable" style="display: none;">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>New</th>
+                <th>Donation</th>
+                <th>Registered At</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="registrationsBody">
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <!-- Registrations Table -->
-      <div class="table-container">
-        <div id="loadingMessage" class="loading">Loading registrations...</div>
-        <table id="registrationsTable" style="display: none;">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>New</th>
-              <th>Donation</th>
-              <th>Registered At</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="registrationsBody">
-          </tbody>
-        </table>
+      <!-- Rosh Hashana Tab Content -->
+      <div id="roshHashanaTab" class="tab-content">
+        <!-- Statistics -->
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-number" id="rhTotalRegistrations">-</div>
+            <div class="stat-label">Total Registrations</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="rhNewAttendees">-</div>
+            <div class="stat-label">New Attendees</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="rhTotalDonations">-</div>
+            <div class="stat-label">Total Donations</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number" id="rhAvgDonation">-</div>
+            <div class="stat-label">Avg Donation</div>
+          </div>
+        </div>
+
+        <!-- Year Selector -->
+        <div class="year-selector">
+          <label for="yearSelector">Select Year:</label>
+          <select id="yearSelector" onchange="filterRoshHashanaByYear()">
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+          </select>
+          <button class="btn" onclick="refreshRoshHashanaData()">🔄 Refresh</button>
+          <button class="btn btn-export" onclick="exportRoshHashanaCSV()">📊 Export CSV</button>
+        </div>
+
+        <!-- Rosh Hashana Registrations Table -->
+        <div class="table-container">
+          <div id="rhLoadingMessage" class="loading">Loading Rosh Hashana registrations...</div>
+          <table id="rhRegistrationsTable" style="display: none;">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>New</th>
+                <th>Donation</th>
+                <th>Registered At</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="rhRegistrationsBody">
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -303,6 +428,9 @@
     let registrationsData = [];
     let allRegistrationsData = []; // Store all data for week filtering
     let selectedWeek = 'current';
+    let roshHashanaData = [];
+    let allRoshHashanaData = []; // Store all Rosh Hashana data
+    let selectedYear = '2025';
 
     // Login form handler
     document.getElementById('loginForm').addEventListener('submit', async function(e) {
@@ -326,6 +454,7 @@
           authToken = data.token;
           showDashboard();
           loadRegistrations();
+          loadRoshHashanaRegistrations();
         } else {
           errorDiv.innerHTML = '<div class="error">Invalid password</div>';
         }
@@ -603,6 +732,158 @@
           // Remove from both filtered and all data
           allRegistrationsData = allRegistrationsData.filter(reg => reg.id !== id);
           filterDataByWeek(); // Re-filter with updated data
+        } else {
+          alert('Failed to delete registration: ' + data.message);
+        }
+      } catch (error) {
+        alert('Error deleting registration: ' + error.message);
+      }
+    }
+
+    // Tab switching functionality
+    function switchTab(tabName) {
+      // Update tab buttons
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+      
+      // Update tab content
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      document.getElementById(tabName === 'shabbat' ? 'shabbatTab' : 'roshHashanaTab').classList.add('active');
+    }
+
+    // Rosh Hashana functions
+    async function loadRoshHashanaRegistrations() {
+      try {
+        const response = await fetch('/admin/rosh-hashana-registrations', {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          allRoshHashanaData = data.data;
+          filterRoshHashanaByYear();
+        } else {
+          throw new Error(data.message);
+        }
+      } catch (error) {
+        document.getElementById('rhLoadingMessage').innerHTML = 
+          '<div class="error">Failed to load Rosh Hashana registrations: ' + error.message + '</div>';
+      }
+    }
+
+    function filterRoshHashanaByYear() {
+      selectedYear = document.getElementById('yearSelector').value;
+      
+      const filteredData = allRoshHashanaData.filter(reg => {
+        const regYear = new Date(reg.created_at).getFullYear().toString();
+        return regYear === selectedYear;
+      });
+      
+      roshHashanaData = filteredData;
+      displayRoshHashanaRegistrations(roshHashanaData);
+      updateRoshHashanaStatistics(roshHashanaData);
+    }
+
+    function displayRoshHashanaRegistrations(registrations) {
+      const tbody = document.getElementById('rhRegistrationsBody');
+      tbody.innerHTML = '';
+      
+      if (registrations.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">No registrations found for ' + selectedYear + '</td></tr>';
+      } else {
+        registrations.forEach(reg => {
+          const donationAmount = parseFloat(reg.donation_amount || 0);
+          const hasDonation = donationAmount > 0;
+          
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${reg.first_name} ${reg.last_name}</td>
+            <td>${reg.email}</td>
+            <td class="new-indicator ${reg.new ? 'new-yes' : 'new-no'}">${reg.new ? '✓' : '✗'}</td>
+            <td class="donation-amount ${hasDonation ? 'has-donation' : ''}">$${donationAmount.toFixed(2)}</td>
+            <td>${new Date(reg.created_at).toLocaleString()}</td>
+            <td class="actions-column">
+              <button class="btn-delete" onclick="deleteRoshHashanaRegistration(${reg.id}, '${reg.first_name} ${reg.last_name}')">Delete</button>
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+      }
+      
+      document.getElementById('rhLoadingMessage').style.display = 'none';
+      document.getElementById('rhRegistrationsTable').style.display = 'table';
+    }
+
+    function updateRoshHashanaStatistics(registrations) {
+      const total = registrations.length;
+      const newCount = registrations.filter(r => r.new).length;
+      const totalDonations = registrations.reduce((sum, r) => sum + parseFloat(r.donation_amount || 0), 0);
+      const avgDonation = total > 0 ? totalDonations / total : 0;
+      
+      document.getElementById('rhTotalRegistrations').textContent = total;
+      document.getElementById('rhNewAttendees').textContent = newCount;
+      document.getElementById('rhTotalDonations').textContent = '$' + totalDonations.toFixed(2);
+      document.getElementById('rhAvgDonation').textContent = '$' + avgDonation.toFixed(2);
+    }
+
+    function refreshRoshHashanaData() {
+      document.getElementById('rhLoadingMessage').style.display = 'block';
+      document.getElementById('rhRegistrationsTable').style.display = 'none';
+      loadRoshHashanaRegistrations();
+    }
+
+    function exportRoshHashanaCSV() {
+      if (roshHashanaData.length === 0) {
+        alert('No data to export');
+        return;
+      }
+      
+      const headers = ['Name', 'Email', 'New', 'Donation Amount', 'Registered At'];
+      const csvContent = [
+        headers.join(','),
+        ...roshHashanaData.map(reg => [
+          `"${reg.first_name} ${reg.last_name}"`,
+          `"${reg.email}"`,
+          reg.new ? 'Yes' : 'No',
+          parseFloat(reg.donation_amount || 0).toFixed(2),
+          `"${new Date(reg.created_at).toLocaleString()}"`
+        ].join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `rosh-hashana-registrations-${selectedYear}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    async function deleteRoshHashanaRegistration(id, name) {
+      if (!confirm(`Are you sure you want to delete the Rosh Hashana registration for ${name}?`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/admin/rosh-hashana-registrations/${id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert(`Rosh Hashana registration for ${name} has been deleted.`);
+          // Remove from both filtered and all data
+          allRoshHashanaData = allRoshHashanaData.filter(reg => reg.id !== id);
+          filterRoshHashanaByYear(); // Re-filter with updated data
         } else {
           alert('Failed to delete registration: ' + data.message);
         }
