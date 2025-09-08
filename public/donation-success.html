@@ -107,24 +107,16 @@
       }
     }
 
-    .success-icon::before,
-    .success-icon::after {
-      content: '';
-      position: absolute;
-      background-color: white;
-      transition: all 0.3s ease;
-    }
-
     .success-icon::before {
-      width: 40px;
-      height: 10px;
-      transform: rotate(45deg) translate(10px, 10px);
-    }
-
-    .success-icon::after {
-      width: 20px;
-      height: 10px;
-      transform: rotate(-45deg) translate(-5px, 20px);
+      content: '✓';
+      color: white;
+      font-size: 48px;
+      font-weight: bold;
+      line-height: 1;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
     }
 
     h1 {
