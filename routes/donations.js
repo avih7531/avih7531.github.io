@@ -30,9 +30,9 @@ router.post('/create-checkout-session', async (req, res) => {
       origin = `${req.protocol}://${origin}`;
     }
     
-    // For production environment with Vercel, use the VERCEL_URL if available
-    if (process.env.VERCEL_URL) {
-      origin = `https://${process.env.VERCEL_URL}`;
+    // For production, use the custom domain instead of Vercel URL
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+      origin = 'https://rejewvenatebychb.com';
     }
     
     // Log the constructed origin for debugging
@@ -109,8 +109,9 @@ router.post('/create-shabbat-session', async (req, res) => {
       origin = `${req.protocol}://${origin}`;
     }
     
-    if (process.env.VERCEL_URL) {
-      origin = `https://${process.env.VERCEL_URL}`;
+    // For production, use the custom domain instead of Vercel URL
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+      origin = 'https://rejewvenatebychb.com';
     }
     
     console.log('Shabbat registration origin:', origin);
