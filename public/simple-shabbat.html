@@ -472,13 +472,13 @@
   </header>
 
   <div class="hero">
-    <h1>Join Us for Shabbat</h1>
-    <p>Experience meaningful Jewish community and connection</p>
+    <h1>Rejewvenate Grads</h1>
+    <p>Join us for Shabbat - Experience meaningful Jewish community and connection</p>
   </div>
 
   <div class="donate-container">
     <h2>Shabbat Registration</h2>
-    <p>Please proceed with no cost or consider an optional donation of $54 or an amount of your choosing.</p>
+    <p>Please proceed with no cost or consider an optional donation of $36 or an amount of your choosing.</p>
     
     <form id="registrationForm">
       <div class="form-section">
@@ -553,8 +553,8 @@
         </div>
         
         <div class="suggested-amount">
-          <button type="button" class="amount-btn suggested-btn" id="fiftyFourBtn" onclick="donateAmount(54)">
-            Suggested: Donate $54
+          <button type="button" class="amount-btn suggested-btn" id="fiftyFourBtn" onclick="donateAmount(36)">
+            Suggested: Donate $36
           </button>
         </div>
       </div>
@@ -608,7 +608,7 @@
       }
     }
     
-    // Reset $54 button to original state
+    // Reset $36 button to original state
     function resetFiftyFourButton() {
       const fiftyFourBtn = document.getElementById('fiftyFourBtn');
       fiftyFourBtn.style.background = 'linear-gradient(135deg, #004080 0%, #002244 100%)';
@@ -616,7 +616,7 @@
       fiftyFourBtn.style.cursor = 'pointer';
     }
     
-    // Donate $54
+    // Donate $36
     function donateAmount(amount) {
       // Clear custom amount input
       document.getElementById('customAmount').value = '';
@@ -624,7 +624,7 @@
       // Reset custom donate button
       document.getElementById('customDonateBtn').disabled = true;
       
-      // Reset $54 button
+      // Reset $36 button
       resetFiftyFourButton();
       
       // Process donation
