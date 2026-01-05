@@ -35,4 +35,9 @@ dist/
 
 # Temporary files
 tmp/
-temp/ 
+temp/
+
+# Database files
+data/*.db
+*.sqlite
+*.sqlite3 
