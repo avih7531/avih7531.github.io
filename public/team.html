@@ -200,6 +200,18 @@
       height: 100%;
       object-fit: cover;
       border-radius: 5px;
+      object-position: 50% 50%; /* Default: centered */
+    }
+    
+    /* Individual image positioning - adjust these values */
+    .team-member-img img[src*="yisrolik"] {
+      object-position: 100% 10%; /* X: 0-100% (left-right), Y: 0-100% (top-bottom) */
+      transform: scale(1.0); /* Zoom: 1.0 = normal, 1.2 = 20% bigger, 0.8 = 20% smaller */
+    }
+    
+    .team-member-img img[src*="liba"] {
+      object-position: 10% 5%;
+      transform: scale(1.0);
     }
 
     .team-member-info {
@@ -261,6 +273,30 @@
       font-size: 1.5rem;
       margin-bottom: 15px;
       border-radius: 5px;
+    }
+
+    .child-member-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 5px;
+      object-position: 50% 50%; /* Default: centered */
+    }
+    
+    /* Individual children image positioning - adjust these values */
+    .child-member-img img[src*="esther_menucha"] {
+      object-position: 100% 10%;
+      transform: scale(1);
+    }
+    
+    .child-member-img img[src*="baruch"] {
+      object-position: 50% 10%;
+      transform: scale(0.95);
+    }
+    
+    .child-member-img img[src*="mendel"] {
+      object-position: 50% 30%;
+      transform: scale(1.0);
     }
 
     .child-member h3 {
@@ -386,54 +422,58 @@
     <div class="team-grid">
       <div class="team-member">
         <div class="team-member-img">
-          <div>Rabbi Photo</div>
+          <img src="images/yisrolik.png" alt="Rabbi Yisrolik Kievman">
         </div>
         <div class="team-member-info">
           <h3>Rabbi Yisrolik Kievman</h3>
           <h4>Co-Founder</h4>
-          <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla malesuada, urna vel hendrerit eleifend, magna nisi commodo nibh, vel viverra eros nulla eget ante. Praesent ornare justo non felis faucibus, at ullamcorper tortor feugiat. Vestibulum quis est ac eros iaculis rutrum. Donec gravida turpis eros, ac placerat enim vehicula at. Quisque semper, nisl eu malesuada viverra, justo mi vestibulum felis, vel bibendum lacus dolor et sem.</p>
+          <p>Rabbi Yisrolik is a beloved and dedicated leader, proudly serving as the co-founder and rabbi of Rejewvenate and Rejewvenate Grads, where he serves the Downtown NYC Jewish community with warmth, vision, and deep commitment. Growing up in Liverpool, England, Rabbi Yisrolik was raised in a home that ran a vibrant community Chabad, where hospitality, communal responsibility, and love for every Jew were a way of life. From a young age, he absorbed what it means to build and sustain a Jewish community rooted in Torah, chesed, and genuine care.</p>
+          <br>
+          <p>That upbringing deeply shaped his rabbinic approach today. Rabbi Yisrolik is known for his authenticity, accessibility, and passion for helping others grow in their Yiddishkeit. Through meaningful relationships, inspiring Torah learning, and an open-door home, he has helped create Rejewvenate as a place where students and young professionals feel empowered, connected, and truly at home.</p>
         </div>
       </div>
 
       <div class="team-member">
         <div class="team-member-img">
-          <div>Rebbetzin Photo</div>
+          <img src="images/liba.png" alt="Rebbetzin Liba Kievman">
         </div>
         <div class="team-member-info">
           <h3>Rebbetzin Liba Kievman</h3>
           <h4>Co-Founder</h4>
-          <p>Nullam tristique, nunc quis aliquet posuere, nulla orci tristique urna, vel euismod diam nibh in nulla. Fusce ac enim sollicitudin, imperdiet neque vel, viverra nunc. Sed mollis turpis at varius blandit. Curabitur sodales ex et quam condimentum, at tempus lorem malesuada. Nullam in lectus nec nunc pharetra blandit. Aenean porttitor tempus arcu, in fermentum turpis placerat sed. Donec vitae mattis tortor.</p>
+          <p>Liba, Rebbetzin and co-founder of Rejewvenate and Rejewvenate Grads, embraces her role as a leader, mentor, and nurturer with great devotion. Having grown up in Downtown Manhattan surrounded by college students, she developed a deep appreciation for Chabad life from a young age. Liba loves cooking, hosting, and being a motherly presence to all who walk through the doors of the Rejewvenate home. She feels deeply honored to continue the Chabad legacy and to create a space filled with warmth, growth, and connection.</p>
         </div>
       </div>
     </div>
 
     <div class="children-section">
       <h2>The Kievman Children</h2>
+      <p style="text-align: center; margin-bottom: 20px; color: #666; font-style: italic;">Together with their children, the Rejewvenate home is truly alive with joy</p>
       <div class="children-grid">
         <div class="child-member">
           <div class="child-member-img">
-            <div>Esther Photo</div>
+            <img src="images/esther_menucha.png" alt="Esther Menucha">
           </div>
           <h3>Esther Menucha</h3>
-          <p>Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Suspendisse aliquam lobortis massa, eu sagittis mi mattis a. Nulla facilisi. In at porta lectus, at hendrerit nisl.</p>
+          <p>Esther Menucha, whose name means hidden comfort, is a radiant and comforting light to all who enter their home. She adores her Rejewvenate family and brings sweetness and warmth wherever she goes.</p>
         </div>
 
         <div class="child-member">
           <div class="child-member-img">
-            <div>Baruch Photo</div>
+            <img src="images/baruch.png" alt="Baruch Mordechai">
           </div>
           <h3>Baruch Mordechai</h3>
-          <p>In at purus vel eros faucibus volutpat. Maecenas dignissim lobortis lacus, at malesuada nisl ultrices at. Praesent eget nibh eu massa blandit ultrices. Donec vehicula sollicitudin bibendum.</p>
+          <p>Baruch, their joyful three-year-old, is a true blessing. He fills Rejewvenate with smiles, laughter, and boundless light, brightening the days of students and guests alike.</p>
         </div>
 
         <div class="child-member">
           <div class="child-member-img">
-            <div>Menachem Photo</div>
+            <img src="images/mendel.jpeg" alt="Menachem Mendel Dovid">
           </div>
           <h3>Menachem Mendel Dovid</h3>
-          <p>Aenean porta diam mi, vel vulputate turpis eleifend quis. Donec tempus nisl nibh, vel consequat nisl mattis in. Nulla facilisi. Praesent varius volutpat enim, eget luctus est finibus in.</p>
+          <p>Mendel, their baby and little bundle of joy and energy, already loves meeting and engaging with the amazing Rejewvenate students, bringing pure happiness to everyone around him.</p>
         </div>
       </div>
+      <p style="text-align: center; margin-top: 40px; font-size: 1.1rem; color: #003366; font-weight: 500; max-width: 800px; margin-left: auto; margin-right: auto;">Together, the family embodies the spirit of Rejewvenate—Torah, love, warmth, and a home where every Jew belongs.</p>
     </div>
   </div>
 
