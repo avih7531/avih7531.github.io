@@ -6,71 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Registration Confirmed - Rejewvenate</title>
   <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Roboto', sans-serif;
-      line-height: 1.6;
-      background-color: #f4f4f9;
-      color: #333;
-      margin: 0;
-    }
-
-    header {
-      background: white;
-      color: white;
-      padding: 12px 0;
-      border-bottom: 2px solid #002244;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    }
-
-    header .container {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0 20px;
-    }
-
-    header img {
-      height: 60px;
-    }
-
-    header nav a {
-      color: #002244;
-      margin: 0 15px;
-      text-decoration: none;
-      font-size: 1rem;
-      font-weight: bold;
-      position: relative;
-      padding-bottom: 3px;
-      transition: color 0.3s ease;
-    }
-
-    header nav a:hover {
-      color: #004080;
-      text-decoration: none;
-    }
-
-    header nav a::after {
-      content: '';
-      position: absolute;
-      width: 0;
-      height: 2px;
-      bottom: 0;
-      left: 0;
-      background-color: #004080;
-      transition: width 0.3s ease;
-    }
-    
-    header nav a:hover::after {
-      width: 100%;
-    }
-
+    /* Page-specific styles for yp/shabbat/confirmation.html */
     .success-container {
       max-width: 800px;
       margin: 80px auto;
@@ -280,20 +218,7 @@
 </head>
 
 <body>
-  <header>
-    <div class="container">
-      <a href="../../index.html">
-        <img src="../../icon.avif" alt="Rejewvenate Logo">
-      </a>
-      <nav>
-        <a href="../../index.html">Home</a>
-        <a href="../../about-us.html">About Us</a>
-        <a href="../../team.html">Team</a>
-        <a href="../../donate.html">Donate</a>
-        <a href="../../contact.html">Contact</a>
-      </nav>
-    </div>
-  </header>
+  <div id="header-placeholder"></div>
 
   <div class="hero">
     <h1>Registration Confirmed!</h1>
@@ -352,6 +277,8 @@
       });
     });
   </script>
+  <div id="footer-placeholder"></div>
+  <script src="/js/components.js"></script>
 </body>
 
 </html> 
